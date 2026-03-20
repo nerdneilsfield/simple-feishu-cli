@@ -2,12 +2,14 @@ package feishu
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
+	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 	"github.com/nerdneilsfield/simple-feishu-cli/internal/config"
 )
 
@@ -36,7 +38,8 @@ type Messenger interface {
 }
 
 type Client struct {
-	sdk *lark.Client
+	sdk        *lark.Client
+	messageAPI messageAPI
 }
 
 type APIError struct {
@@ -44,6 +47,10 @@ type APIError struct {
 	Code    int
 	Message string
 	Err     error
+}
+
+type messageAPI interface {
+	Create(ctx context.Context, req *larkim.CreateMessageReq, options ...larkcore.RequestOptionFunc) (*larkim.CreateMessageResp, error)
 }
 
 func (e *APIError) Error() string {
@@ -70,13 +77,53 @@ func NewClient(cfg config.Config) (*Client, error) {
 		return nil, fmt.Errorf("missing app credentials")
 	}
 
+	sdk := lark.NewClient(cfg.AppID, cfg.AppSecret)
+
 	return &Client{
-		sdk: lark.NewClient(cfg.AppID, cfg.AppSecret),
+		sdk:        sdk,
+		messageAPI: sdk.Im.V1.Message,
 	}, nil
 }
 
 func (c *Client) SendText(ctx context.Context, input TextMessageInput) (MessageResult, error) {
-	return MessageResult{}, errors.New("send text not implemented")
+	if c == nil || c.messageAPI == nil {
+		return MessageResult{}, errors.New("message api is not configured")
+	}
+
+	content, err := json.Marshal(map[string]string{"text": input.Text})
+	if err != nil {
+		return MessageResult{}, fmt.Errorf("marshal text content: %w", err)
+	}
+
+	body := larkim.NewCreateMessageReqBodyBuilder().
+		ReceiveId(input.ReceiveID).
+		MsgType(larkim.MsgTypeText).
+		Content(string(content)).
+		Build()
+
+	req := larkim.NewCreateMessageReqBuilder().
+		ReceiveIdType(input.ReceiveIDType).
+		Body(body).
+		Build()
+	req.Body = body
+
+	resp, err := c.messageAPI.Create(ctx, req)
+	if err != nil {
+		return MessageResult{}, wrapError("send_text", err)
+	}
+	if !resp.Success() {
+		return MessageResult{}, wrapError("send_text", resp.CodeError)
+	}
+	if resp.Data == nil {
+		return MessageResult{}, &APIError{Op: "send_text", Message: "missing response data"}
+	}
+
+	return MessageResult{
+		MessageID:     larkcore.StringValue(resp.Data.MessageId),
+		MsgType:       larkcore.StringValue(resp.Data.MsgType),
+		ReceiveID:     input.ReceiveID,
+		ReceiveIDType: input.ReceiveIDType,
+	}, nil
 }
 
 func (c *Client) SendFile(ctx context.Context, input FileMessageInput) (MessageResult, error) {
