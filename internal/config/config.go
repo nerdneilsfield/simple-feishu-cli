@@ -29,20 +29,7 @@ type fileConfig struct {
 }
 
 func Load(opts LoadOptions) (Config, error) {
-	path, err := resolveConfigPath(opts)
-	if err != nil {
-		return Config{}, err
-	}
-
-	fileCfg, err := loadFileConfig(path)
-	if err != nil {
-		return Config{}, err
-	}
-
-	cfg := Config{
-		AppID:     strings.TrimSpace(fileCfg.AppID),
-		AppSecret: strings.TrimSpace(fileCfg.AppSecret),
-	}
+	cfg := Config{}
 
 	if value := strings.TrimSpace(os.Getenv("FEISHU_APP_ID")); value != "" {
 		cfg.AppID = value
@@ -55,6 +42,32 @@ func Load(opts LoadOptions) (Config, error) {
 	}
 	if value := strings.TrimSpace(opts.AppSecret); value != "" {
 		cfg.AppSecret = value
+	}
+
+	explicitPath := strings.TrimSpace(opts.ConfigPath) != ""
+	if explicitPath || !hasCredentials(cfg) {
+		path, err := resolveConfigPath(opts)
+		if err != nil {
+			if !explicitPath && hasCredentials(cfg) {
+				return cfg, nil
+			}
+			return Config{}, err
+		}
+
+		fileCfg, err := loadFileConfig(path, explicitPath)
+		if err != nil {
+			if !explicitPath && hasCredentials(cfg) {
+				return cfg, nil
+			}
+			return Config{}, err
+		}
+
+		if cfg.AppID == "" {
+			cfg.AppID = strings.TrimSpace(fileCfg.AppID)
+		}
+		if cfg.AppSecret == "" {
+			cfg.AppSecret = strings.TrimSpace(fileCfg.AppSecret)
+		}
 	}
 
 	var missing []string
@@ -92,7 +105,11 @@ func resolveConfigPath(opts LoadOptions) (string, error) {
 	return DefaultConfigPath(opts.HomeDir)
 }
 
-func loadFileConfig(path string) (fileConfig, error) {
+func hasCredentials(cfg Config) bool {
+	return strings.TrimSpace(cfg.AppID) != "" && strings.TrimSpace(cfg.AppSecret) != ""
+}
+
+func loadFileConfig(path string, explicit bool) (fileConfig, error) {
 	if path == "" {
 		return fileConfig{}, nil
 	}
@@ -100,6 +117,9 @@ func loadFileConfig(path string) (fileConfig, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
+			if explicit {
+				return fileConfig{}, fmt.Errorf("config path %q does not exist", path)
+			}
 			return fileConfig{}, nil
 		}
 		return fileConfig{}, fmt.Errorf("stat config file %q: %w", path, err)

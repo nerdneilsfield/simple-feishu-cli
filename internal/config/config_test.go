@@ -72,6 +72,38 @@ func TestLoadReturnsClearErrorWhenCredentialsMissing(t *testing.T) {
 	}
 }
 
+func TestLoadIgnoresBrokenDefaultConfigWhenHigherPriorityCredentialsExist(t *testing.T) {
+	home := t.TempDir()
+	configDir := filepath.Join(home, ".config", "feishu")
+	writeConfigFile(t, configDir, "app_id: [broken\n", 0o600)
+
+	cfg, err := Load(LoadOptions{
+		AppID:     "flag-id",
+		AppSecret: "flag-secret",
+		HomeDir:   home,
+	})
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.AppID != "flag-id" || cfg.AppSecret != "flag-secret" {
+		t.Fatalf("Load() = %#v, want flag credentials", cfg)
+	}
+}
+
+func TestLoadReturnsExplicitMissingConfigPathError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing.yaml")
+
+	_, err := Load(LoadOptions{ConfigPath: path})
+	if err == nil {
+		t.Fatal("Load() error = nil, want explicit config path error")
+	}
+
+	if !strings.Contains(err.Error(), path) || !strings.Contains(err.Error(), "config path") {
+		t.Fatalf("Load() error = %q, want explicit config path failure", err)
+	}
+}
+
 func TestLoadRejectsInsecureConfigPermissionsOnUnix(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX permission check is not enforced on Windows")
