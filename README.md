@@ -1,136 +1,97 @@
 # simple-feishu-cli
 
-`feishu` 是一个最小可用的飞书 CLI，用来在企业自建应用场景下给飞书用户或群组发送文本消息，或者上传本地文件后发送文件消息。
+[English](README.md) | [简体中文](README_ZH.md)
 
-当前已实现：
+[![CI](https://github.com/nerdneilsfield/simple-feishu-cli/actions/workflows/ci.yaml/badge.svg)](https://github.com/nerdneilsfield/simple-feishu-cli/actions/workflows/ci.yaml)
+[![Release](https://github.com/nerdneilsfield/simple-feishu-cli/actions/workflows/release.yaml/badge.svg)](https://github.com/nerdneilsfield/simple-feishu-cli/actions/workflows/release.yaml)
+[![Go Version](https://img.shields.io/badge/go-1.24.0-00ADD8?logo=go)](go.mod)
 
-- `feishu send text`
-- `feishu send file`
-- 凭证来源优先级：命令行参数 > 环境变量 > 配置文件
-- 稳定输出字段：`message_id`、`msg_type`、`receive_id`、`receive_id_type`
-- 固定退出码：`0`、`2`、`3`、`4`、`10`
+`feishu` is a small CLI for self-built Feishu apps. It sends text messages to users or chats, and uploads a local file before sending it as a file message.
 
-第一版刻意不做：
+Current scope:
 
-- 查人/查群
-- 富文本、卡片、图片等更多消息类型
-- 多 profile / 多租户配置
-- token 本地缓存
+- `./feishu send text`
+- `./feishu send file`
+- credential precedence: CLI flags > environment variables > config file
+- stable success fields: `message_id`, `msg_type`, `receive_id`, `receive_id_type`
+- fixed exit codes: `0`, `2`, `3`, `4`, `10`
 
-## 安装
+Out of scope for now:
 
-要求：Go `1.24.0`（见 [go.mod](./go.mod)）或兼容的 `1.24.x` 版本。
+- user/chat lookup
+- rich text, cards, images, or other message types
+- multi-profile or multi-tenant config
+- local token caching
 
-从源码构建：
+## Quickstart
+
+Requires Go `1.24.0` or a compatible `1.24.x` release.
+
+Build from source:
 
 ```bash
 go build -o feishu ./cmd/feishu
 ./feishu --help
 ```
 
-如果你想直接把命令装进 `PATH`：
-
-```bash
-go install ./cmd/feishu
-feishu --help
-```
-
-## 前提条件
-
-在飞书开放平台侧，至少需要满足这些条件：
-
-- 使用企业自建应用
-- 应用已开启机器人能力
-- 发送给用户时，该用户在机器人的可用范围内
-- 发送给群时，机器人已在群中且有发言权限
-
-官方文档：
-
-- 发送消息：<https://open.feishu.cn/document/server-docs/im-v1/message/create.md>
-- 上传文件：<https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/file/create.md>
-- 自建应用获取 `tenant_access_token`：<https://open.feishu.cn/document/server-docs/authentication-management/access-token/tenant_access_token_internal.md>
-
-## 权限要求
-
-`tenant_access_token` 接口本身不需要额外权限。
-
-发送消息接口满足以下任一权限即可：
-
-- `im:message`
-- `im:message:send_as_bot`
-- `im:message:send`
-
-上传文件接口满足以下任一权限即可：
-
-- `im:resource`
-- `im:resource:upload`
-
-补充说明：
-
-- 发送消息和上传文件都要求应用开启机器人能力
-- 上传文件官方限制为：文件不能是空文件，且大小不能超过 30 MB
-
-## 配置凭证
-
-当前凭证优先级：
-
-1. `--app-id` / `--app-secret`
-2. `FEISHU_APP_ID` / `FEISHU_APP_SECRET`
-3. `~/.config/feishu/config.yaml`
-
-### 方式 1：命令行参数
-
-适合 CI/CD 或一次性调用：
-
-```bash
-./feishu \
-  --app-id "$FEISHU_APP_ID" \
-  --app-secret "$FEISHU_APP_SECRET" \
-  send text \
-  --to-type open_id \
-  --to ou_xxx \
-  --text "hello"
-```
-
-### 方式 2：环境变量
+Set credentials with env vars:
 
 ```bash
 export FEISHU_APP_ID='cli_xxx'
 export FEISHU_APP_SECRET='secret_xxx'
 ```
 
-然后直接调用：
+Send a text message:
 
 ```bash
-./feishu send text --to-type open_id --to ou_xxx --text "hello"
+./feishu send text \
+  --to-type open_id \
+  --to ou_xxx \
+  --text "hello from cli"
 ```
 
-如果你使用的是 `go install` 装进 `PATH`，把 `./feishu` 换成 `feishu` 即可。
+Upload and send a file:
 
-### 方式 3：配置文件
+```bash
+./feishu send file \
+  --to-type chat_id \
+  --to oc_xxx \
+  --path ./report.pdf
+```
 
-默认路径：
+Successful output is always:
 
 ```text
-~/.config/feishu/config.yaml
+message_id=om_xxx
+msg_type=text
+receive_id=ou_xxx
+receive_id_type=open_id
 ```
 
-示例内容：
+<details>
+<summary>Configuration and credential precedence</summary>
+
+Credential sources are resolved in this order:
+
+1. `--app-id` / `--app-secret`
+2. `FEISHU_APP_ID` / `FEISHU_APP_SECRET`
+3. `~/.config/feishu/config.yaml`
+
+Example config file in this repo:
+
+```bash
+cp config.example.yaml ~/.config/feishu/config.yaml
+chmod 600 ~/.config/feishu/config.yaml
+```
+
+`config.example.yaml` contains:
 
 ```yaml
 app_id: cli_xxx
 app_secret: secret_xxx
 ```
 
-Unix-like 系统下，配置文件权限必须是 owner-only，例如：
-
-```bash
-chmod 600 ~/.config/feishu/config.yaml
-```
-
-如果权限过宽，CLI 会拒绝加载该文件。
-
-### 使用 `--config` 指定自定义配置文件
+Use a custom config path when needed:
 
 ```bash
 ./feishu \
@@ -141,66 +102,83 @@ chmod 600 ~/.config/feishu/config.yaml
   --text "hello"
 ```
 
-`--config` 的常见失败模式：
+Notes:
 
-- 路径不存在：返回明确的 `config path "..." does not exist`
-- 路径是目录：返回 `config path "..." is a directory`
-- Unix-like 系统下权限过宽：返回 `config file "..." has insecure permissions ...; use 0600`
-- YAML 格式错误：返回 `parse config file "..." ...`
+- On Unix-like systems, config files must be owner-only, for example `0600`.
+- If the config path is explicit and missing, the CLI fails fast.
+- `config.example.yaml` is for documentation only. Keep real local config files separate.
+- Repository-local files such as `config.toml`, `config.yaml`, build outputs, and `dist/` are ignored by git.
+- Passing `--app-secret` is supported, but env vars or a protected config file are safer outside CI/CD.
 
-安全建议：
+</details>
 
-- 本地优先使用环境变量或受限权限的配置文件
-- CI/CD 中如必须使用命令行参数，注意平台是否会屏蔽敏感参数
-- 不要把 `app_secret` 提交到仓库
+<details>
+<summary>Prerequisites and Feishu permissions</summary>
 
-## 如何获取目标 ID
+At the Feishu side, the minimum requirements are:
 
-CLI 当前只支持这些 `--to-type`：
+- use a self-built app
+- enable bot capability for the app
+- when sending to a user, that user must be inside the bot's availability scope
+- when sending to a chat, the bot must already be in the chat and allowed to speak
+
+Official docs:
+
+- send message: <https://open.feishu.cn/document/server-docs/im-v1/message/create.md>
+- upload file: <https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/file/create.md>
+- self-built app tenant token: <https://open.feishu.cn/document/server-docs/authentication-management/access-token/tenant_access_token_internal.md>
+
+The `tenant_access_token` endpoint itself does not require extra permission.
+
+Any one of these permissions is enough for message sending:
+
+- `im:message`
+- `im:message:send_as_bot`
+- `im:message:send`
+
+Any one of these permissions is enough for file upload:
+
+- `im:resource`
+- `im:resource:upload`
+
+Additional notes:
+
+- both message sending and file upload require bot capability
+- uploaded files must not be empty
+- the documented size limit for uploaded files is 30 MB
+
+</details>
+
+<details>
+<summary>Supported target IDs</summary>
+
+Supported `--to-type` values:
 
 - `open_id`
 - `user_id`
 - `union_id`
 - `chat_id`
 
-如果你还没有目标 ID，需要先从飞书侧拿到它。官方文档入口：
+Official entry points for obtaining IDs:
 
-- Open ID：<https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-openid>
-- Union ID：<https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-union-id>
-- User ID：<https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-user-id>
-- Chat ID：<https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat-id-description>
+- Open ID: <https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-openid>
+- Union ID: <https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-union-id>
+- User ID: <https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-user-id>
+- Chat ID: <https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat-id-description>
 
-最短路径建议：
+Practical defaults:
 
-- 给单个用户发消息：优先用 `open_id`
-- 给群发消息：使用 `chat_id`
-- 如果你已经在别的系统里拿到 `user_id` 或 `union_id`，CLI 也能直接用
+- for a single user, prefer `open_id`
+- for a group, use `chat_id`
+- if another system already gives you `user_id` or `union_id`, the CLI accepts those directly
 
-发送消息接口官方也在 `receive_id_type` 参数说明里列出了这些 ID 类型及对应文档：<https://open.feishu.cn/document/server-docs/im-v1/message/create.md>
+The official message API docs also list these `receive_id_type` values.
 
-## 使用方式
+</details>
 
-### 发送文本消息
+## More examples
 
-```bash
-./feishu send text \
-  --to-type open_id \
-  --to ou_xxx \
-  --text "hello from cli"
-```
-
-### 上传并发送文件
-
-```bash
-./feishu send file \
-  --to-type chat_id \
-  --to oc_xxx \
-  --path ./report.pdf
-```
-
-### CI/CD 示例
-
-使用命令行参数：
+CI/CD with explicit flags:
 
 ```bash
 ./feishu \
@@ -212,66 +190,38 @@ CLI 当前只支持这些 `--to-type`：
   --path ./artifacts/report.pdf
 ```
 
-使用环境变量：
+If the binary is installed into `PATH`, drop the `./` prefix.
 
-```bash
-export FEISHU_APP_ID="${FEISHU_APP_ID}"
-export FEISHU_APP_SECRET="${FEISHU_APP_SECRET}"
+<details>
+<summary>Output contract, exit codes, and troubleshooting</summary>
 
-./feishu send text \
-  --to-type open_id \
-  --to "${FEISHU_OPEN_ID}" \
-  --text "build succeeded"
-```
-
-## 输出格式
-
-成功时固定输出：
-
-```text
-message_id=om_xxx
-msg_type=text
-receive_id=ou_xxx
-receive_id_type=open_id
-```
-
-`send file` 也使用同样的输出字段，不会打印 `file_key`。
-
-失败时输出格式：
+Failure output is always:
 
 ```text
 error: <message>
 ```
 
-## 退出码
+Exit codes:
 
-- `0`：成功
-- `2`：参数或输入校验错误
-- `3`：配置、凭证或本地客户端错误
-- `4`：本地文件错误
-- `10`：飞书 API 错误
+- `0`: success
+- `2`: argument or input validation error
+- `3`: config, credential, or local client error
+- `4`: local file error
+- `10`: Feishu API error
 
-## 常见错误
+Common failures:
 
 ### `error: missing required credentials: app_id, app_secret`
 
-原因：
+Check these sources in order:
 
-- 没有通过参数、环境变量或配置文件提供凭证
-
-处理：
-
-- 检查 `--app-id` / `--app-secret`
-- 检查 `FEISHU_APP_ID` / `FEISHU_APP_SECRET`
-- 检查 `~/.config/feishu/config.yaml`
+- `--app-id` / `--app-secret`
+- `FEISHU_APP_ID` / `FEISHU_APP_SECRET`
+- `~/.config/feishu/config.yaml`
 
 ### `error: config file ".../config.yaml" has insecure permissions ...; use 0600`
 
-原因：
-
-- Unix-like 系统下配置文件权限过宽
-
-处理：
+Fix the file mode on Unix-like systems:
 
 ```bash
 chmod 600 ~/.config/feishu/config.yaml
@@ -279,57 +229,48 @@ chmod 600 ~/.config/feishu/config.yaml
 
 ### `error: invalid --to-type "..."`
 
-原因：
+Use one of these values:
 
-- `--to-type` 不在 CLI 支持范围内
-
-处理：
-
-- 改用 `open_id`、`user_id`、`union_id` 或 `chat_id`
+- `open_id`
+- `user_id`
+- `union_id`
+- `chat_id`
 
 ### `error: stat_file "...": no such file or directory`
 
-原因：
-
-- `send file` 指定的本地文件不存在
-
-处理：
-
-- 检查 `--path`
-- 确认文件存在且可读
+The local file given to `send file` does not exist or is not readable.
 
 ### `error: send_text: code=99991663 msg=insufficient permission`
 
-原因：
+Check:
 
-- 飞书权限不足，或者机器人能力/可用范围/群权限不满足
+- bot capability is enabled
+- the app has message send or file upload permission
+- the target user is inside the app scope
+- the bot is inside the target chat and allowed to speak
 
-处理：
+</details>
 
-- 检查应用是否开启机器人能力
-- 检查是否授予了消息发送或文件上传权限
-- 检查用户是否在可用范围内
-- 检查机器人是否在目标群中且有发言权限
+<details>
+<summary>Development and automation</summary>
 
-## 开发
-
-本地基线校验入口默认是 `make`，它会运行完整检查；`make check` 等价。
+Local baseline checks:
 
 ```bash
 make
-make check
 ```
 
-如果环境里没有 `make`，可以直接运行原生命令：
+Equivalent commands:
 
 ```bash
 go test ./...
 go vet ./...
 ```
 
-如果只想单独运行某一项：
+GitHub automation already in this repo:
 
-```bash
-make test
-make vet
-```
+- `.github/workflows/ci.yaml` runs `make check` on push and pull request
+- `.github/workflows/release.yaml` runs GoReleaser on `v*` tags
+- `.goreleaser.yml` builds release archives for Linux, macOS, and Windows on `amd64` and `arm64`
+
+</details>

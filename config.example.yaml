@@ -1,0 +1,4 @@
+# Copy this file to ~/.config/feishu/config.yaml on Unix-like systems.
+# Then protect it with: chmod 600 ~/.config/feishu/config.yaml
+app_id: cli_xxx
+app_secret: secret_xxx
