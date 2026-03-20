@@ -52,6 +52,12 @@ type APIError struct {
 	Err     error
 }
 
+type LocalFileError struct {
+	Op   string
+	Path string
+	Err  error
+}
+
 type messageAPI interface {
 	Create(ctx context.Context, req *larkim.CreateMessageReq, options ...larkcore.RequestOptionFunc) (*larkim.CreateMessageResp, error)
 }
@@ -73,6 +79,20 @@ func (e *APIError) Error() string {
 }
 
 func (e *APIError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+func (e *LocalFileError) Error() string {
+	if e == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("%s %q: %v", e.Op, e.Path, e.Err)
+}
+
+func (e *LocalFileError) Unwrap() error {
 	if e == nil {
 		return nil
 	}
@@ -141,10 +161,10 @@ func (c *Client) SendFile(ctx context.Context, input FileMessageInput) (MessageR
 
 	info, err := os.Stat(input.FilePath)
 	if err != nil {
-		return MessageResult{}, fmt.Errorf("stat file %q: %w", input.FilePath, err)
+		return MessageResult{}, &LocalFileError{Op: "stat_file", Path: input.FilePath, Err: err}
 	}
 	if info.IsDir() {
-		return MessageResult{}, fmt.Errorf("file path %q is a directory", input.FilePath)
+		return MessageResult{}, &LocalFileError{Op: "stat_file", Path: input.FilePath, Err: errors.New("path is a directory")}
 	}
 
 	fileName := filepath.Base(input.FilePath)
@@ -159,7 +179,7 @@ func (c *Client) SendFile(ctx context.Context, input FileMessageInput) (MessageR
 		FilePath(input.FilePath).
 		Build()
 	if err != nil {
-		return MessageResult{}, fmt.Errorf("build file upload body: %w", err)
+		return MessageResult{}, &LocalFileError{Op: "read_file", Path: input.FilePath, Err: err}
 	}
 
 	uploadReq := larkim.NewCreateFileReqBuilder().Body(uploadBody).Build()
