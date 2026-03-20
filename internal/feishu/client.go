@@ -81,20 +81,121 @@ type LocalFileError struct {
 	Err  error
 }
 
+type createMessageInput struct {
+	ReceiveIDType string
+	ReceiveID     string
+	MsgType       string
+	Content       string
+}
+
+type createFileInput struct {
+	FileType string
+	FileName string
+	FilePath string
+}
+
+type listChatsPageInput struct {
+	UserIDType string
+	PageToken  string
+	PageSize   int
+}
+
+type getChatInput struct {
+	ChatID     string
+	UserIDType string
+}
+
 type messageAPI interface {
-	Create(ctx context.Context, req *larkim.CreateMessageReq, options ...larkcore.RequestOptionFunc) (*larkim.CreateMessageResp, error)
+	Create(ctx context.Context, input createMessageInput) (*larkim.CreateMessageResp, error)
 }
 
 type fileAPI interface {
-	Create(ctx context.Context, req *larkim.CreateFileReq, options ...larkcore.RequestOptionFunc) (*larkim.CreateFileResp, error)
+	Create(ctx context.Context, input createFileInput) (*larkim.CreateFileResp, error)
 }
 
 type chatListAPI interface {
-	List(ctx context.Context, req *larkim.ListChatReq, options ...larkcore.RequestOptionFunc) (*larkim.ListChatResp, error)
+	List(ctx context.Context, input listChatsPageInput) (*larkim.ListChatResp, error)
 }
 
 type chatGetAPI interface {
+	Get(ctx context.Context, input getChatInput) (*larkim.GetChatResp, error)
+}
+
+type sdkMessageService interface {
+	Create(ctx context.Context, req *larkim.CreateMessageReq, options ...larkcore.RequestOptionFunc) (*larkim.CreateMessageResp, error)
+}
+
+type sdkFileService interface {
+	Create(ctx context.Context, req *larkim.CreateFileReq, options ...larkcore.RequestOptionFunc) (*larkim.CreateFileResp, error)
+}
+
+type sdkChatService interface {
+	List(ctx context.Context, req *larkim.ListChatReq, options ...larkcore.RequestOptionFunc) (*larkim.ListChatResp, error)
 	Get(ctx context.Context, req *larkim.GetChatReq, options ...larkcore.RequestOptionFunc) (*larkim.GetChatResp, error)
+}
+
+type sdkMessageAPI struct {
+	service sdkMessageService
+}
+
+type sdkFileAPI struct {
+	service sdkFileService
+}
+
+type sdkChatAPI struct {
+	service sdkChatService
+}
+
+func (a sdkMessageAPI) Create(ctx context.Context, input createMessageInput) (*larkim.CreateMessageResp, error) {
+	body := larkim.NewCreateMessageReqBodyBuilder().
+		ReceiveId(input.ReceiveID).
+		MsgType(input.MsgType).
+		Content(input.Content).
+		Build()
+
+	req := larkim.NewCreateMessageReqBuilder().
+		ReceiveIdType(input.ReceiveIDType).
+		Body(body).
+		Build()
+	req.Body = body
+
+	return a.service.Create(ctx, req)
+}
+
+func (a sdkFileAPI) Create(ctx context.Context, input createFileInput) (*larkim.CreateFileResp, error) {
+	uploadBody, err := larkim.NewCreateFilePathReqBodyBuilder().
+		FileType(input.FileType).
+		FileName(input.FileName).
+		FilePath(input.FilePath).
+		Build()
+	if err != nil {
+		return nil, &LocalFileError{Op: "read_file", Path: input.FilePath, Err: err}
+	}
+
+	uploadReq := larkim.NewCreateFileReqBuilder().Body(uploadBody).Build()
+	uploadReq.Body = uploadBody
+
+	return a.service.Create(ctx, uploadReq)
+}
+
+func (a sdkChatAPI) List(ctx context.Context, input listChatsPageInput) (*larkim.ListChatResp, error) {
+	builder := larkim.NewListChatReqBuilder().
+		UserIdType(input.UserIDType).
+		PageSize(input.PageSize)
+	if input.PageToken != "" {
+		builder.PageToken(input.PageToken)
+	}
+
+	return a.service.List(ctx, builder.Build())
+}
+
+func (a sdkChatAPI) Get(ctx context.Context, input getChatInput) (*larkim.GetChatResp, error) {
+	req := larkim.NewGetChatReqBuilder().
+		ChatId(input.ChatID).
+		UserIdType(input.UserIDType).
+		Build()
+
+	return a.service.Get(ctx, req)
 }
 
 func (e *APIError) Error() string {
@@ -161,10 +262,10 @@ func NewClient(cfg config.Config) (*Client, error) {
 
 	return &Client{
 		sdk:         sdk,
-		fileAPI:     sdk.Im.V1.File,
-		messageAPI:  sdk.Im.V1.Message,
-		chatListAPI: sdk.Im.V1.Chat,
-		chatGetAPI:  sdk.Im.V1.Chat,
+		fileAPI:     sdkFileAPI{service: sdk.Im.V1.File},
+		messageAPI:  sdkMessageAPI{service: sdk.Im.V1.Message},
+		chatListAPI: sdkChatAPI{service: sdk.Im.V1.Chat},
+		chatGetAPI:  sdkChatAPI{service: sdk.Im.V1.Chat},
 	}, nil
 }
 
@@ -184,15 +285,11 @@ func (c *Client) ListChats(ctx context.Context) ([]ChatSummary, error) {
 	)
 
 	for {
-		builder := larkim.NewListChatReqBuilder().
-			UserIdType(larkim.UserIdTypeListChatOpenId).
-			PageSize(chatListPageSize)
-		if pageToken != "" {
-			builder.PageToken(pageToken)
-		}
-		req := builder.Build()
-
-		resp, err := c.chatListAPI.List(ctx, req)
+		resp, err := c.chatListAPI.List(ctx, listChatsPageInput{
+			UserIDType: larkim.UserIdTypeListChatOpenId,
+			PageToken:  pageToken,
+			PageSize:   chatListPageSize,
+		})
 		if err != nil {
 			return nil, wrapError("list_chats", err)
 		}
@@ -238,12 +335,7 @@ func (c *Client) ListChats(ctx context.Context) ([]ChatSummary, error) {
 }
 
 func (c *Client) getChatOwnerID(ctx context.Context, chatID, userIDType string) (string, error) {
-	req := larkim.NewGetChatReqBuilder().
-		ChatId(chatID).
-		UserIdType(userIDType).
-		Build()
-
-	resp, err := c.chatGetAPI.Get(ctx, req)
+	resp, err := c.chatGetAPI.Get(ctx, getChatInput{ChatID: chatID, UserIDType: userIDType})
 	if err != nil {
 		return "", wrapError("get_chat", err)
 	}
@@ -267,19 +359,12 @@ func (c *Client) SendText(ctx context.Context, input TextMessageInput) (MessageR
 		return MessageResult{}, &ClientError{Op: "send_text", Message: "marshal text content", Err: err}
 	}
 
-	body := larkim.NewCreateMessageReqBodyBuilder().
-		ReceiveId(input.ReceiveID).
-		MsgType(larkim.MsgTypeText).
-		Content(string(content)).
-		Build()
-
-	req := larkim.NewCreateMessageReqBuilder().
-		ReceiveIdType(input.ReceiveIDType).
-		Body(body).
-		Build()
-	req.Body = body
-
-	resp, err := c.messageAPI.Create(ctx, req)
+	resp, err := c.messageAPI.Create(ctx, createMessageInput{
+		ReceiveIDType: input.ReceiveIDType,
+		ReceiveID:     input.ReceiveID,
+		MsgType:       larkim.MsgTypeText,
+		Content:       string(content),
+	})
 	if err != nil {
 		return MessageResult{}, wrapError("send_text", err)
 	}
@@ -317,20 +402,16 @@ func (c *Client) SendFile(ctx context.Context, input FileMessageInput) (MessageR
 	fileName := filepath.Base(input.FilePath)
 	fileType := uploadFileType(fileName)
 
-	uploadBody, err := larkim.NewCreateFilePathReqBodyBuilder().
-		FileType(fileType).
-		FileName(fileName).
-		FilePath(input.FilePath).
-		Build()
+	uploadResp, err := c.fileAPI.Create(ctx, createFileInput{
+		FileType: fileType,
+		FileName: fileName,
+		FilePath: input.FilePath,
+	})
 	if err != nil {
-		return MessageResult{}, &LocalFileError{Op: "read_file", Path: input.FilePath, Err: err}
-	}
-
-	uploadReq := larkim.NewCreateFileReqBuilder().Body(uploadBody).Build()
-	uploadReq.Body = uploadBody
-
-	uploadResp, err := c.fileAPI.Create(ctx, uploadReq)
-	if err != nil {
+		var fileErr *LocalFileError
+		if errors.As(err, &fileErr) {
+			return MessageResult{}, fileErr
+		}
 		return MessageResult{}, wrapError("upload_file", err)
 	}
 	if !uploadResp.Success() {
@@ -345,18 +426,12 @@ func (c *Client) SendFile(ctx context.Context, input FileMessageInput) (MessageR
 		return MessageResult{}, &ClientError{Op: "send_file", Message: "marshal file content", Err: err}
 	}
 
-	body := larkim.NewCreateMessageReqBodyBuilder().
-		ReceiveId(input.ReceiveID).
-		MsgType("file").
-		Content(string(content)).
-		Build()
-	req := larkim.NewCreateMessageReqBuilder().
-		ReceiveIdType(input.ReceiveIDType).
-		Body(body).
-		Build()
-	req.Body = body
-
-	resp, err := c.messageAPI.Create(ctx, req)
+	resp, err := c.messageAPI.Create(ctx, createMessageInput{
+		ReceiveIDType: input.ReceiveIDType,
+		ReceiveID:     input.ReceiveID,
+		MsgType:       "file",
+		Content:       string(content),
+	})
 	if err != nil {
 		return MessageResult{}, wrapError("send_file", err)
 	}

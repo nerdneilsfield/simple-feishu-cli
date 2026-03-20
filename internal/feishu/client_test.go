@@ -8,7 +8,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"unsafe"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
@@ -150,19 +149,19 @@ func TestListChatsAggregatesOwnerIDsAcrossPages(t *testing.T) {
 		resps: map[string]*larkim.GetChatResp{
 			"oc_first|open_id": {
 				CodeError: larkcore.CodeError{Code: 0},
-				Data: &larkim.GetChatRespData{OwnerId: larkcore.StringPtr("ou_first")},
+				Data:      &larkim.GetChatRespData{OwnerId: larkcore.StringPtr("ou_first")},
 			},
 			"oc_first|union_id": {
 				CodeError: larkcore.CodeError{Code: 0},
-				Data: &larkim.GetChatRespData{OwnerId: larkcore.StringPtr("on_first")},
+				Data:      &larkim.GetChatRespData{OwnerId: larkcore.StringPtr("on_first")},
 			},
 			"oc_second|open_id": {
 				CodeError: larkcore.CodeError{Code: 0},
-				Data: &larkim.GetChatRespData{OwnerId: larkcore.StringPtr("ou_second")},
+				Data:      &larkim.GetChatRespData{OwnerId: larkcore.StringPtr("ou_second")},
 			},
 			"oc_second|union_id": {
 				CodeError: larkcore.CodeError{Code: 0},
-				Data: &larkim.GetChatRespData{OwnerId: larkcore.StringPtr("on_second")},
+				Data:      &larkim.GetChatRespData{OwnerId: larkcore.StringPtr("on_second")},
 			},
 		},
 	}
@@ -177,12 +176,12 @@ func TestListChatsAggregatesOwnerIDsAcrossPages(t *testing.T) {
 		{
 			ChatID: "oc_first",
 			Name:   "Engineering",
-			Owner: ChatOwner{OpenID: "ou_first", UnionID: "on_first"},
+			Owner:  ChatOwner{OpenID: "ou_first", UnionID: "on_first"},
 		},
 		{
 			ChatID: "oc_second",
 			Name:   "Operations",
-			Owner: ChatOwner{OpenID: "ou_second", UnionID: "on_second"},
+			Owner:  ChatOwner{OpenID: "ou_second", UnionID: "on_second"},
 		},
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -300,25 +299,16 @@ func TestSendTextBuildsRequestAndReturnsMessageResult(t *testing.T) {
 		t.Fatalf("SendText() result = %#v", result)
 	}
 
-	if fake.req == nil {
-		t.Fatal("SendText() did not call Create")
-	}
-	if got := fake.receiveIDType(); got != larkim.ReceiveIdTypeOpenId {
+	if got := fake.input.ReceiveIDType; got != larkim.ReceiveIdTypeOpenId {
 		t.Fatalf("receive_id_type = %q, want %q", got, larkim.ReceiveIdTypeOpenId)
 	}
-
-	body := fake.req.Body
-	if body == nil {
-		t.Fatal("SendText() request body = nil")
-	}
-
-	if got := larkcore.StringValue(body.ReceiveId); got != "ou_xxx" {
+	if got := fake.input.ReceiveID; got != "ou_xxx" {
 		t.Fatalf("request receive_id = %q, want %q", got, "ou_xxx")
 	}
-	if got := larkcore.StringValue(body.MsgType); got != larkim.MsgTypeText {
+	if got := fake.input.MsgType; got != larkim.MsgTypeText {
 		t.Fatalf("request msg_type = %q, want %q", got, larkim.MsgTypeText)
 	}
-	if got := larkcore.StringValue(body.Content); !strings.Contains(got, `"text":"hello"`) {
+	if got := fake.input.Content; !strings.Contains(got, `"text":"hello"`) {
 		t.Fatalf("request content = %q, want text payload", got)
 	}
 }
@@ -428,29 +418,23 @@ func TestSendFileUploadsFileAndSendsMessage(t *testing.T) {
 		t.Fatalf("SendFile() result = %#v", result)
 	}
 
-	if fileAPI.req == nil || fileAPI.req.Body == nil {
-		t.Fatal("SendFile() did not build file upload request")
-	}
-	if got := larkcore.StringValue(fileAPI.req.Body.FileName); got != "report.pdf" {
+	if got := fileAPI.input.FileName; got != "report.pdf" {
 		t.Fatalf("upload file_name = %q, want %q", got, "report.pdf")
 	}
-	if got := larkcore.StringValue(fileAPI.req.Body.FileType); got != "pdf" {
+	if got := fileAPI.input.FileType; got != "pdf" {
 		t.Fatalf("upload file_type = %q, want %q", got, "pdf")
 	}
-	if fileAPI.req.Body.File == nil {
-		t.Fatal("upload file content = nil")
+	if got := fileAPI.input.FilePath; got != path {
+		t.Fatalf("upload file_path = %q, want %q", got, path)
 	}
 
-	if messageAPI.req == nil || messageAPI.req.Body == nil {
-		t.Fatal("SendFile() did not build file message request")
-	}
-	if got := messageAPI.receiveIDType(); got != larkim.ReceiveIdTypeOpenId {
+	if got := messageAPI.input.ReceiveIDType; got != larkim.ReceiveIdTypeOpenId {
 		t.Fatalf("message receive_id_type = %q, want %q", got, larkim.ReceiveIdTypeOpenId)
 	}
-	if got := larkcore.StringValue(messageAPI.req.Body.MsgType); got != "file" {
+	if got := messageAPI.input.MsgType; got != "file" {
 		t.Fatalf("message msg_type = %q, want %q", got, "file")
 	}
-	if got := larkcore.StringValue(messageAPI.req.Body.Content); !strings.Contains(got, `"file_key":"file_xxx"`) {
+	if got := messageAPI.input.Content; !strings.Contains(got, `"file_key":"file_xxx"`) {
 		t.Fatalf("message content = %q, want file_key payload", got)
 	}
 }
@@ -502,10 +486,10 @@ func TestSendFileReturnsLocalFileErrorForNonexistentPath(t *testing.T) {
 	if !os.IsNotExist(fileErr.Err) {
 		t.Fatalf("SendFile() wrapped err = %v, want not-exist error", fileErr.Err)
 	}
-	if fileAPI.req != nil {
+	if fileAPI.input != (createFileInput{}) {
 		t.Fatal("SendFile() attempted upload for nonexistent path")
 	}
-	if messageAPI.req != nil {
+	if messageAPI.input != (createMessageInput{}) {
 		t.Fatal("SendFile() attempted message send for nonexistent path")
 	}
 }
@@ -567,7 +551,7 @@ func TestSendFileFailsBeforeUploadWhenMessageAPIUnavailable(t *testing.T) {
 	if !errors.As(err, &clientErr) {
 		t.Fatalf("SendFile() error = %T, want *ClientError", err)
 	}
-	if fileAPI.req != nil {
+	if fileAPI.input != (createFileInput{}) {
 		t.Fatal("SendFile() uploaded file before validating client usability")
 	}
 }
@@ -629,9 +613,9 @@ func TestSendFileWrapsUnsuccessfulUploadResponses(t *testing.T) {
 }
 
 type fakeMessageService struct {
-	req  *larkim.CreateMessageReq
-	resp *larkim.CreateMessageResp
-	err  error
+	input createMessageInput
+	resp  *larkim.CreateMessageResp
+	err   error
 }
 
 type fakeChatListCall struct {
@@ -645,10 +629,10 @@ type fakeChatListService struct {
 	err   error
 }
 
-func (f *fakeChatListService) List(_ context.Context, req *larkim.ListChatReq, _ ...larkcore.RequestOptionFunc) (*larkim.ListChatResp, error) {
+func (f *fakeChatListService) List(_ context.Context, input listChatsPageInput) (*larkim.ListChatResp, error) {
 	f.calls = append(f.calls, fakeChatListCall{
-		UserIDType: queryParamValue(req, "user_id_type"),
-		PageToken:  queryParamValue(req, "page_token"),
+		UserIDType: input.UserIDType,
+		PageToken:  input.PageToken,
 	})
 	if f.err != nil {
 		return nil, f.err
@@ -667,10 +651,8 @@ type fakeChatGetService struct {
 	calls []string
 }
 
-func (f *fakeChatGetService) Get(_ context.Context, req *larkim.GetChatReq, _ ...larkcore.RequestOptionFunc) (*larkim.GetChatResp, error) {
-	chatID := pathParamValue(req, "chat_id")
-	userIDType := queryParamValue(req, "user_id_type")
-	key := chatID + "|" + userIDType
+func (f *fakeChatGetService) Get(_ context.Context, input getChatInput) (*larkim.GetChatResp, error) {
+	key := input.ChatID + "|" + input.UserIDType
 	f.calls = append(f.calls, key)
 	if f.err != nil {
 		return nil, f.err
@@ -682,26 +664,22 @@ func (f *fakeChatGetService) Get(_ context.Context, req *larkim.GetChatReq, _ ..
 	return resp, nil
 }
 
-func (f *fakeMessageService) Create(_ context.Context, req *larkim.CreateMessageReq, _ ...larkcore.RequestOptionFunc) (*larkim.CreateMessageResp, error) {
-	f.req = req
+func (f *fakeMessageService) Create(_ context.Context, input createMessageInput) (*larkim.CreateMessageResp, error) {
+	f.input = input
 	if f.err != nil {
 		return nil, f.err
 	}
 	return f.resp, nil
 }
 
-func (f *fakeMessageService) receiveIDType() string {
-	return queryParamValue(f.req, "receive_id_type")
-}
-
 type fakeFileService struct {
-	req  *larkim.CreateFileReq
-	resp *larkim.CreateFileResp
-	err  error
+	input createFileInput
+	resp  *larkim.CreateFileResp
+	err   error
 }
 
-func (f *fakeFileService) Create(_ context.Context, req *larkim.CreateFileReq, _ ...larkcore.RequestOptionFunc) (*larkim.CreateFileResp, error) {
-	f.req = req
+func (f *fakeFileService) Create(_ context.Context, input createFileInput) (*larkim.CreateFileResp, error) {
+	f.input = input
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -717,48 +695,4 @@ func writeTempFile(t *testing.T, name, content string) string {
 		t.Fatalf("WriteFile(%q) error = %v", path, err)
 	}
 	return path
-}
-
-func queryParamValue(req interface{}, key string) string {
-	if req == nil {
-		return ""
-	}
-
-	v := reflect.ValueOf(req)
-	if v.Kind() != reflect.Ptr || v.IsNil() {
-		return ""
-	}
-
-	apiReqField := v.Elem().FieldByName("apiReq")
-	if !apiReqField.IsValid() || apiReqField.IsNil() {
-		return ""
-	}
-	apiReqValue := reflect.NewAt(apiReqField.Type(), unsafe.Pointer(apiReqField.UnsafeAddr())).Elem()
-	queryParamsField := apiReqValue.Elem().FieldByName("QueryParams")
-	queryParamsValue := reflect.NewAt(queryParamsField.Type(), unsafe.Pointer(queryParamsField.UnsafeAddr())).Elem().Interface().(larkcore.QueryParams)
-	values := queryParamsValue[key]
-	if len(values) == 0 {
-		return ""
-	}
-	return values[0]
-}
-
-func pathParamValue(req interface{}, key string) string {
-	if req == nil {
-		return ""
-	}
-
-	v := reflect.ValueOf(req)
-	if v.Kind() != reflect.Ptr || v.IsNil() {
-		return ""
-	}
-
-	apiReqField := v.Elem().FieldByName("apiReq")
-	if !apiReqField.IsValid() || apiReqField.IsNil() {
-		return ""
-	}
-	apiReqValue := reflect.NewAt(apiReqField.Type(), unsafe.Pointer(apiReqField.UnsafeAddr())).Elem()
-	pathParamsField := apiReqValue.Elem().FieldByName("PathParams")
-	pathParamsValue := reflect.NewAt(pathParamsField.Type(), unsafe.Pointer(pathParamsField.UnsafeAddr())).Elem().Interface().(larkcore.PathParams)
-	return pathParamsValue[key]
 }
