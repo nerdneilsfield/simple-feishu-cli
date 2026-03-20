@@ -19,21 +19,19 @@
 
 ## 安装
 
+要求：Go `1.24.0`（见 [go.mod](./go.mod)）或兼容的 `1.24.x` 版本。
+
 从源码构建：
 
 ```bash
 go build -o feishu ./cmd/feishu
+./feishu --help
 ```
 
-或者安装到你的 `GOBIN` / `GOPATH/bin`：
+如果你想直接把命令装进 `PATH`：
 
 ```bash
 go install ./cmd/feishu
-```
-
-查看帮助：
-
-```bash
 feishu --help
 ```
 
@@ -85,7 +83,7 @@ feishu --help
 适合 CI/CD 或一次性调用：
 
 ```bash
-feishu \
+./feishu \
   --app-id "$FEISHU_APP_ID" \
   --app-secret "$FEISHU_APP_SECRET" \
   send text \
@@ -104,8 +102,10 @@ export FEISHU_APP_SECRET='secret_xxx'
 然后直接调用：
 
 ```bash
-feishu send text --to-type open_id --to ou_xxx --text "hello"
+./feishu send text --to-type open_id --to ou_xxx --text "hello"
 ```
+
+如果你使用的是 `go install` 装进 `PATH`，把 `./feishu` 换成 `feishu` 即可。
 
 ### 方式 3：配置文件
 
@@ -130,25 +130,60 @@ chmod 600 ~/.config/feishu/config.yaml
 
 如果权限过宽，CLI 会拒绝加载该文件。
 
+### 使用 `--config` 指定自定义配置文件
+
+```bash
+./feishu \
+  --config ./feishu-prod.yaml \
+  send text \
+  --to-type open_id \
+  --to ou_xxx \
+  --text "hello"
+```
+
+`--config` 的常见失败模式：
+
+- 路径不存在：返回明确的 `config path "..." does not exist`
+- 路径是目录：返回 `config path "..." is a directory`
+- Unix-like 系统下权限过宽：返回 `config file "..." has insecure permissions ...; use 0600`
+- YAML 格式错误：返回 `parse config file "..." ...`
+
 安全建议：
 
 - 本地优先使用环境变量或受限权限的配置文件
 - CI/CD 中如必须使用命令行参数，注意平台是否会屏蔽敏感参数
 - 不要把 `app_secret` 提交到仓库
 
-## 使用方式
+## 如何获取目标 ID
 
-当前 `--to-type` 只支持：
+CLI 当前只支持这些 `--to-type`：
 
 - `open_id`
 - `user_id`
 - `union_id`
 - `chat_id`
 
+如果你还没有目标 ID，需要先从飞书侧拿到它。官方文档入口：
+
+- Open ID：<https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-openid>
+- Union ID：<https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-union-id>
+- User ID：<https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-user-id>
+- Chat ID：<https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat-id-description>
+
+最短路径建议：
+
+- 给单个用户发消息：优先用 `open_id`
+- 给群发消息：使用 `chat_id`
+- 如果你已经在别的系统里拿到 `user_id` 或 `union_id`，CLI 也能直接用
+
+发送消息接口官方也在 `receive_id_type` 参数说明里列出了这些 ID 类型及对应文档：<https://open.feishu.cn/document/server-docs/im-v1/message/create.md>
+
+## 使用方式
+
 ### 发送文本消息
 
 ```bash
-feishu send text \
+./feishu send text \
   --to-type open_id \
   --to ou_xxx \
   --text "hello from cli"
@@ -157,7 +192,7 @@ feishu send text \
 ### 上传并发送文件
 
 ```bash
-feishu send file \
+./feishu send file \
   --to-type chat_id \
   --to oc_xxx \
   --path ./report.pdf
