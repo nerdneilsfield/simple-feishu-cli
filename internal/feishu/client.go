@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	lark "github.com/larksuite/oapi-sdk-go/v3"
@@ -39,6 +41,7 @@ type Messenger interface {
 
 type Client struct {
 	sdk        *lark.Client
+	fileAPI    fileAPI
 	messageAPI messageAPI
 }
 
@@ -51,6 +54,10 @@ type APIError struct {
 
 type messageAPI interface {
 	Create(ctx context.Context, req *larkim.CreateMessageReq, options ...larkcore.RequestOptionFunc) (*larkim.CreateMessageResp, error)
+}
+
+type fileAPI interface {
+	Create(ctx context.Context, req *larkim.CreateFileReq, options ...larkcore.RequestOptionFunc) (*larkim.CreateFileResp, error)
 }
 
 func (e *APIError) Error() string {
@@ -81,6 +88,7 @@ func NewClient(cfg config.Config) (*Client, error) {
 
 	return &Client{
 		sdk:        sdk,
+		fileAPI:    sdk.Im.V1.File,
 		messageAPI: sdk.Im.V1.Message,
 	}, nil
 }
@@ -127,7 +135,83 @@ func (c *Client) SendText(ctx context.Context, input TextMessageInput) (MessageR
 }
 
 func (c *Client) SendFile(ctx context.Context, input FileMessageInput) (MessageResult, error) {
-	return MessageResult{}, errors.New("send file not implemented")
+	if c == nil || c.fileAPI == nil {
+		return MessageResult{}, errors.New("file api is not configured")
+	}
+
+	info, err := os.Stat(input.FilePath)
+	if err != nil {
+		return MessageResult{}, fmt.Errorf("stat file %q: %w", input.FilePath, err)
+	}
+	if info.IsDir() {
+		return MessageResult{}, fmt.Errorf("file path %q is a directory", input.FilePath)
+	}
+
+	fileName := filepath.Base(input.FilePath)
+	fileType := strings.TrimPrefix(strings.ToLower(filepath.Ext(fileName)), ".")
+	if fileType == "" {
+		fileType = "stream"
+	}
+
+	uploadBody, err := larkim.NewCreateFilePathReqBodyBuilder().
+		FileType(fileType).
+		FileName(fileName).
+		FilePath(input.FilePath).
+		Build()
+	if err != nil {
+		return MessageResult{}, fmt.Errorf("build file upload body: %w", err)
+	}
+
+	uploadReq := larkim.NewCreateFileReqBuilder().Body(uploadBody).Build()
+	uploadReq.Body = uploadBody
+
+	uploadResp, err := c.fileAPI.Create(ctx, uploadReq)
+	if err != nil {
+		return MessageResult{}, wrapError("upload_file", err)
+	}
+	if !uploadResp.Success() {
+		return MessageResult{}, wrapError("upload_file", uploadResp.CodeError)
+	}
+	if uploadResp.Data == nil || strings.TrimSpace(larkcore.StringValue(uploadResp.Data.FileKey)) == "" {
+		return MessageResult{}, &APIError{Op: "upload_file", Message: "missing file_key in response"}
+	}
+
+	content, err := json.Marshal(map[string]string{"file_key": larkcore.StringValue(uploadResp.Data.FileKey)})
+	if err != nil {
+		return MessageResult{}, fmt.Errorf("marshal file content: %w", err)
+	}
+	if c.messageAPI == nil {
+		return MessageResult{}, errors.New("message api is not configured")
+	}
+
+	body := larkim.NewCreateMessageReqBodyBuilder().
+		ReceiveId(input.ReceiveID).
+		MsgType("file").
+		Content(string(content)).
+		Build()
+	req := larkim.NewCreateMessageReqBuilder().
+		ReceiveIdType(input.ReceiveIDType).
+		Body(body).
+		Build()
+	req.Body = body
+
+	resp, err := c.messageAPI.Create(ctx, req)
+	if err != nil {
+		return MessageResult{}, wrapError("send_file", err)
+	}
+	if !resp.Success() {
+		return MessageResult{}, wrapError("send_file", resp.CodeError)
+	}
+	if resp.Data == nil {
+		return MessageResult{}, &APIError{Op: "send_file", Message: "missing response data"}
+	}
+
+	return MessageResult{
+		MessageID:     larkcore.StringValue(resp.Data.MessageId),
+		MsgType:       larkcore.StringValue(resp.Data.MsgType),
+		ReceiveID:     input.ReceiveID,
+		ReceiveIDType: input.ReceiveIDType,
+	}, nil
 }
 
 func wrapError(op string, err error) error {

@@ -3,6 +3,8 @@ package feishu
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -118,6 +120,93 @@ func TestSendTextWrapsSDKErrors(t *testing.T) {
 	}
 }
 
+func TestSendFileUploadsFileAndSendsMessage(t *testing.T) {
+	path := writeTempFile(t, "report.pdf", "hello")
+	fileAPI := &fakeFileService{
+		resp: &larkim.CreateFileResp{
+			CodeError: larkcore.CodeError{Code: 0},
+			Data: &larkim.CreateFileRespData{
+				FileKey: larkcore.StringPtr("file_xxx"),
+			},
+		},
+	}
+	messageAPI := &fakeMessageService{
+		resp: &larkim.CreateMessageResp{
+			CodeError: larkcore.CodeError{Code: 0},
+			Data: &larkim.CreateMessageRespData{
+				MessageId: larkcore.StringPtr("om_file"),
+				MsgType:   larkcore.StringPtr("file"),
+			},
+		},
+	}
+	client := &Client{
+		fileAPI:    fileAPI,
+		messageAPI: messageAPI,
+	}
+
+	result, err := client.SendFile(context.Background(), FileMessageInput{
+		ReceiveIDType: larkim.ReceiveIdTypeOpenId,
+		ReceiveID:     "ou_xxx",
+		FilePath:      path,
+	})
+	if err != nil {
+		t.Fatalf("SendFile() error = %v", err)
+	}
+
+	if result.MessageID != "om_file" || result.MsgType != "file" {
+		t.Fatalf("SendFile() result = %#v", result)
+	}
+
+	if fileAPI.req == nil || fileAPI.req.Body == nil {
+		t.Fatal("SendFile() did not build file upload request")
+	}
+	if got := larkcore.StringValue(fileAPI.req.Body.FileName); got != "report.pdf" {
+		t.Fatalf("upload file_name = %q, want %q", got, "report.pdf")
+	}
+	if got := larkcore.StringValue(fileAPI.req.Body.FileType); got != "pdf" {
+		t.Fatalf("upload file_type = %q, want %q", got, "pdf")
+	}
+	if fileAPI.req.Body.File == nil {
+		t.Fatal("upload file content = nil")
+	}
+
+	if messageAPI.req == nil || messageAPI.req.Body == nil {
+		t.Fatal("SendFile() did not build file message request")
+	}
+	if got := larkcore.StringValue(messageAPI.req.Body.MsgType); got != "file" {
+		t.Fatalf("message msg_type = %q, want %q", got, "file")
+	}
+	if got := larkcore.StringValue(messageAPI.req.Body.Content); !strings.Contains(got, `"file_key":"file_xxx"`) {
+		t.Fatalf("message content = %q, want file_key payload", got)
+	}
+}
+
+func TestSendFileWrapsUploadErrors(t *testing.T) {
+	path := writeTempFile(t, "report.pdf", "hello")
+	client := &Client{
+		fileAPI: &fakeFileService{
+			err: larkcore.CodeError{Code: 99991663, Msg: "insufficient permission"},
+		},
+	}
+
+	_, err := client.SendFile(context.Background(), FileMessageInput{
+		ReceiveIDType: larkim.ReceiveIdTypeOpenId,
+		ReceiveID:     "ou_xxx",
+		FilePath:      path,
+	})
+	if err == nil {
+		t.Fatal("SendFile() error = nil, want wrapped api error")
+	}
+
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("SendFile() error = %T, want *APIError", err)
+	}
+	if apiErr.Code != 99991663 {
+		t.Fatalf("SendFile() error code = %d, want %d", apiErr.Code, 99991663)
+	}
+}
+
 type fakeMessageService struct {
 	req  *larkim.CreateMessageReq
 	resp *larkim.CreateMessageResp
@@ -130,4 +219,29 @@ func (f *fakeMessageService) Create(_ context.Context, req *larkim.CreateMessage
 		return nil, f.err
 	}
 	return f.resp, nil
+}
+
+type fakeFileService struct {
+	req  *larkim.CreateFileReq
+	resp *larkim.CreateFileResp
+	err  error
+}
+
+func (f *fakeFileService) Create(_ context.Context, req *larkim.CreateFileReq, _ ...larkcore.RequestOptionFunc) (*larkim.CreateFileResp, error) {
+	f.req = req
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.resp, nil
+}
+
+func writeTempFile(t *testing.T, name, content string) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("WriteFile(%q) error = %v", path, err)
+	}
+	return path
 }
