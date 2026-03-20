@@ -15,6 +15,47 @@ import (
 	"github.com/nerdneilsfield/simple-feishu-cli/internal/config"
 )
 
+func TestListChatsExposesChatSummaryContract(t *testing.T) {
+	var _ ChatLister = (*Client)(nil)
+
+	want := []ChatSummary{
+		{
+			ChatID: "oc_123",
+			Name:   "Engineering",
+			Owner: ChatOwner{
+				OpenID:  "ou_123",
+				UnionID: "on_123",
+			},
+		},
+	}
+	got := []ChatSummary{
+		{
+			ChatID: "oc_123",
+			Name:   "Engineering",
+			Owner: ChatOwner{
+				OpenID:  "ou_123",
+				UnionID: "on_123",
+			},
+		},
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("chat summaries = %#v, want %#v", got, want)
+	}
+}
+
+func TestListChatsReturnsClientErrorWhenChatListingIsUnconfigured(t *testing.T) {
+	_, err := (&Client{}).ListChats(context.Background())
+	if err == nil {
+		t.Fatal("ListChats() error = nil, want client error")
+	}
+
+	var clientErr *ClientError
+	if !errors.As(err, &clientErr) {
+		t.Fatalf("ListChats() error = %T, want *ClientError", err)
+	}
+}
+
 func TestNewClientCreatesSDKClient(t *testing.T) {
 	client, err := NewClient(config.Config{
 		AppID:     "cli_xxx",

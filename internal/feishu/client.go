@@ -34,9 +34,24 @@ type FileMessageInput struct {
 	FilePath      string
 }
 
+type ChatOwner struct {
+	OpenID  string
+	UnionID string
+}
+
+type ChatSummary struct {
+	ChatID string
+	Name   string
+	Owner  ChatOwner
+}
+
 type Messenger interface {
 	SendText(ctx context.Context, input TextMessageInput) (MessageResult, error)
 	SendFile(ctx context.Context, input FileMessageInput) (MessageResult, error)
+}
+
+type ChatLister interface {
+	ListChats(ctx context.Context) ([]ChatSummary, error)
 }
 
 type Client struct {
@@ -134,6 +149,11 @@ func NewClient(cfg config.Config) (*Client, error) {
 		fileAPI:    sdk.Im.V1.File,
 		messageAPI: sdk.Im.V1.Message,
 	}, nil
+}
+
+func (c *Client) ListChats(ctx context.Context) ([]ChatSummary, error) {
+	_ = ctx
+	return nil, &ClientError{Op: "list_chats", Message: "chat list api is not configured"}
 }
 
 func (c *Client) SendText(ctx context.Context, input TextMessageInput) (MessageResult, error) {
