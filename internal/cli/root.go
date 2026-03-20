@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/nerdneilsfield/simple-feishu-cli/internal/config"
 	"github.com/nerdneilsfield/simple-feishu-cli/internal/feishu"
@@ -179,8 +181,20 @@ func newListChatsCmd(deps Deps, f *flags) *cobra.Command {
 				return &cliError{code: 3, err: err}
 			}
 
-			if _, err := lister.ListChats(cmd.Context()); err != nil {
+			chats, err := lister.ListChats(cmd.Context())
+			if err != nil {
 				return classifyRunError(err)
+			}
+
+			var writeErr error
+			switch format {
+			case "json":
+				writeErr = writeChatJSON(cmd.OutOrStdout(), chats)
+			default:
+				writeErr = writeChatTable(cmd.OutOrStdout(), chats)
+			}
+			if writeErr != nil {
+				return fmt.Errorf("write list chats: %w", writeErr)
 			}
 
 			return nil
@@ -381,6 +395,49 @@ func classifyRunError(err error) error {
 	}
 
 	return &cliError{code: 10, err: err}
+}
+
+type chatListJSON struct {
+	Items []chatSummaryJSON `json:"items"`
+}
+
+type chatSummaryJSON struct {
+	ChatID string        `json:"chat_id"`
+	Name   string        `json:"name"`
+	Owner  chatOwnerJSON `json:"owner"`
+}
+
+type chatOwnerJSON struct {
+	OpenID  string `json:"open_id"`
+	UnionID string `json:"union_id"`
+}
+
+func writeChatTable(w io.Writer, chats []feishu.ChatSummary) error {
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	if _, err := fmt.Fprintln(tw, "CHAT_ID	NAME	OWNER_OPEN_ID	OWNER_UNION_ID"); err != nil {
+		return err
+	}
+	for _, chat := range chats {
+		if _, err := fmt.Fprintf(tw, "%s	%s	%s	%s\n", chat.ChatID, chat.Name, chat.Owner.OpenID, chat.Owner.UnionID); err != nil {
+			return err
+		}
+	}
+	return tw.Flush()
+}
+
+func writeChatJSON(w io.Writer, chats []feishu.ChatSummary) error {
+	items := make([]chatSummaryJSON, 0, len(chats))
+	for _, chat := range chats {
+		items = append(items, chatSummaryJSON{
+			ChatID: chat.ChatID,
+			Name:   chat.Name,
+			Owner: chatOwnerJSON{
+				OpenID:  chat.Owner.OpenID,
+				UnionID: chat.Owner.UnionID,
+			},
+		})
+	}
+	return json.NewEncoder(w).Encode(chatListJSON{Items: items})
 }
 
 func writeResult(w io.Writer, result feishu.MessageResult) error {

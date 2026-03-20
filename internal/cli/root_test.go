@@ -3,9 +3,13 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 
 	"github.com/nerdneilsfield/simple-feishu-cli/internal/config"
 	"github.com/nerdneilsfield/simple-feishu-cli/internal/feishu"
@@ -82,6 +86,179 @@ func TestListChatsCommandRejectsInvalidFormat(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "invalid --format") {
 		t.Fatalf("error = %q, want invalid --format message", err)
+	}
+}
+
+func TestListChatsTableOutput(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{
+		LoadConfig: func(config.LoadOptions) (config.Config, error) {
+			return config.Config{AppID: "flag-id", AppSecret: "flag-secret"}, nil
+		},
+		NewChatLister: func(config.Config) (feishu.ChatLister, error) {
+			return fakeChatLister{
+				listChats: func(context.Context) ([]feishu.ChatSummary, error) {
+					return []feishu.ChatSummary{
+						{ChatID: "oc_xxx", Name: "Ops", Owner: feishu.ChatOwner{OpenID: "ou_xxx", UnionID: "on_xxx"}},
+						{ChatID: "oc_yyy", Name: "Infra", Owner: feishu.ChatOwner{OpenID: "ou_yyy", UnionID: "on_yyy"}},
+					}, nil
+				},
+			}, nil
+		},
+	})
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+	cmd.SetArgs([]string{"--app-id", "flag-id", "--app-secret", "flag-secret", "list", "chats"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("line count = %d, want %d; output=%q", len(lines), 3, stdout.String())
+	}
+
+	re := regexp.MustCompile(`^\S+\s+\S+\s+\S+\s+\S+$`)
+	for i, line := range lines {
+		if !re.MatchString(line) {
+			t.Fatalf("line %d = %q, want 4-column table row", i, line)
+		}
+	}
+	if !strings.Contains(lines[0], "CHAT_ID") || !strings.Contains(lines[0], "OWNER_UNION_ID") {
+		t.Fatalf("header = %q, want table headers", lines[0])
+	}
+}
+
+func TestListChatsTableOutputHandlesChineseNames(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{
+		LoadConfig: func(config.LoadOptions) (config.Config, error) {
+			return config.Config{AppID: "flag-id", AppSecret: "flag-secret"}, nil
+		},
+		NewChatLister: func(config.Config) (feishu.ChatLister, error) {
+			return fakeChatLister{
+				listChats: func(context.Context) ([]feishu.ChatSummary, error) {
+					return []feishu.ChatSummary{
+						{ChatID: "oc_cn", Name: "研发群", Owner: feishu.ChatOwner{OpenID: "ou_cn", UnionID: "on_cn"}},
+						{ChatID: "oc_en", Name: "Ops", Owner: feishu.ChatOwner{OpenID: "ou_en", UnionID: "on_en"}},
+					}, nil
+				},
+			}, nil
+		},
+	})
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+	cmd.SetArgs([]string{"--app-id", "flag-id", "--app-secret", "flag-secret", "list", "chats"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("line count = %d, want %d; output=%q", len(lines), 3, stdout.String())
+	}
+	if !regexp.MustCompile(`^oc_cn\s+研发群\s+ou_cn\s+on_cn$`).MatchString(lines[1]) {
+		t.Fatalf("chinese row = %q, want aligned row", lines[1])
+	}
+	if !regexp.MustCompile(`^oc_en\s+Ops\s+ou_en\s+on_en$`).MatchString(lines[2]) {
+		t.Fatalf("english row = %q, want aligned row", lines[2])
+	}
+}
+
+func TestListChatsJSONOutput(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{
+		LoadConfig: func(config.LoadOptions) (config.Config, error) {
+			return config.Config{AppID: "flag-id", AppSecret: "flag-secret"}, nil
+		},
+		NewChatLister: func(config.Config) (feishu.ChatLister, error) {
+			return fakeChatLister{
+				listChats: func(context.Context) ([]feishu.ChatSummary, error) {
+					return []feishu.ChatSummary{{
+						ChatID: "oc_xxx",
+						Name:   "报警群",
+						Owner:  feishu.ChatOwner{OpenID: "ou_xxx", UnionID: "on_xxx"},
+					}}, nil
+				},
+			}, nil
+		},
+	})
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+	cmd.SetArgs([]string{"--app-id", "flag-id", "--app-secret", "flag-secret", "list", "chats", "--format", "json"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	var got struct {
+		Items []struct {
+			ChatID string `json:"chat_id"`
+			Name   string `json:"name"`
+			Owner  struct {
+				OpenID  string `json:"open_id"`
+				UnionID string `json:"union_id"`
+			} `json:"owner"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v; output=%q", err, stdout.String())
+	}
+	if len(got.Items) != 1 {
+		t.Fatalf("items len = %d, want %d", len(got.Items), 1)
+	}
+	if got.Items[0].ChatID != "oc_xxx" || got.Items[0].Name != "报警群" || got.Items[0].Owner.OpenID != "ou_xxx" || got.Items[0].Owner.UnionID != "on_xxx" {
+		t.Fatalf("json items = %#v", got.Items)
+	}
+}
+
+func TestListChatsEmptyOutputs(t *testing.T) {
+	newCmd := func(format string) *cobra.Command {
+		cmd := NewRootCmdWithDeps(Deps{
+			LoadConfig: func(config.LoadOptions) (config.Config, error) {
+				return config.Config{AppID: "flag-id", AppSecret: "flag-secret"}, nil
+			},
+			NewChatLister: func(config.Config) (feishu.ChatLister, error) {
+				return fakeChatLister{
+					listChats: func(context.Context) ([]feishu.ChatSummary, error) {
+						return []feishu.ChatSummary{}, nil
+					},
+				}, nil
+			},
+		})
+		args := []string{"--app-id", "flag-id", "--app-secret", "flag-secret", "list", "chats"}
+		if format != "" {
+			args = append(args, "--format", format)
+		}
+		cmd.SetArgs(args)
+		return cmd
+	}
+
+	var tableOut bytes.Buffer
+	tableCmd := newCmd("")
+	tableCmd.SetOut(&tableOut)
+	tableCmd.SetErr(&tableOut)
+	if err := tableCmd.Execute(); err != nil {
+		t.Fatalf("table Execute() error = %v", err)
+	}
+	if !regexp.MustCompile(`^CHAT_ID\s+NAME\s+OWNER_OPEN_ID\s+OWNER_UNION_ID$`).MatchString(strings.TrimSpace(tableOut.String())) {
+		t.Fatalf("table output = %q, want header-only table", tableOut.String())
+	}
+
+	var jsonOut bytes.Buffer
+	jsonCmd := newCmd("json")
+	jsonCmd.SetOut(&jsonOut)
+	jsonCmd.SetErr(&jsonOut)
+	if err := jsonCmd.Execute(); err != nil {
+		t.Fatalf("json Execute() error = %v", err)
+	}
+	if strings.TrimSpace(jsonOut.String()) != `{"items":[]}` {
+		t.Fatalf("json output = %q, want %q", strings.TrimSpace(jsonOut.String()), `{"items":[]}`)
 	}
 }
 
