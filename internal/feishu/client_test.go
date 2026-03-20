@@ -112,6 +112,34 @@ func TestListChatsFailsClosedWhenHasMoreWithoutPageToken(t *testing.T) {
 	}
 }
 
+func TestGetChatOwnerIDReturnsAPIErrorWhenResponseDataMissing(t *testing.T) {
+	client := &Client{
+		chatGetAPI: &fakeChatGetService{
+			resps: map[string]*larkim.GetChatResp{
+				"oc_first|open_id": {
+					CodeError: larkcore.CodeError{Code: 0},
+				},
+			},
+		},
+	}
+
+	_, err := client.getChatOwnerID(context.Background(), "oc_first", larkim.UserIdTypeGetChatOpenId)
+	if err == nil {
+		t.Fatal("getChatOwnerID() error = nil, want api error")
+	}
+
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("getChatOwnerID() error = %T, want *APIError", err)
+	}
+	if apiErr.Op != "get_chat" {
+		t.Fatalf("getChatOwnerID() op = %q, want %q", apiErr.Op, "get_chat")
+	}
+	if apiErr.Message != "missing response data" {
+		t.Fatalf("getChatOwnerID() message = %q, want %q", apiErr.Message, "missing response data")
+	}
+}
+
 func TestListChatsLeavesMissingOwnerFieldsEmpty(t *testing.T) {
 	listAPI := &fakeChatListService{
 		resps: []*larkim.ListChatResp{
@@ -133,6 +161,7 @@ func TestListChatsLeavesMissingOwnerFieldsEmpty(t *testing.T) {
 		resps: map[string]*larkim.GetChatResp{
 			"oc_first|open_id": {
 				CodeError: larkcore.CodeError{Code: 0},
+				Data:      &larkim.GetChatRespData{},
 			},
 			"oc_first|union_id": {
 				CodeError: larkcore.CodeError{Code: 0},
