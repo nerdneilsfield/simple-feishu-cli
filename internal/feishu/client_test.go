@@ -56,17 +56,36 @@ func TestListChatsReturnsClientErrorWhenChatListingIsUnconfigured(t *testing.T) 
 	}
 }
 
-func TestNewClientCreatesSDKClient(t *testing.T) {
+func TestNormalizeAppCredentialsTrimsWhitespace(t *testing.T) {
+	appID, appSecret := normalizeAppCredentials(config.Config{
+		AppID:     "  cli_xxx  ",
+		AppSecret: "  secret  ",
+	})
+
+	if appID != "cli_xxx" {
+		t.Fatalf("normalized app id = %q, want %q", appID, "cli_xxx")
+	}
+	if appSecret != "secret" {
+		t.Fatalf("normalized app secret = %q, want %q", appSecret, "secret")
+	}
+}
+
+func TestNewClientWiresSendDependencies(t *testing.T) {
+	var _ Messenger = (*Client)(nil)
+	var _ ChatLister = (*Client)(nil)
+
 	client, err := NewClient(config.Config{
-		AppID:     "cli_xxx",
-		AppSecret: "secret",
+		AppID:     "  cli_xxx  ",
+		AppSecret: "  secret  ",
 	})
 	if err != nil {
 		t.Fatalf("NewClient() error = %v", err)
 	}
-
-	if client.sdk == nil {
-		t.Fatal("NewClient() returned nil sdk client")
+	if client.messageAPI == nil {
+		t.Fatal("NewClient() returned nil message api")
+	}
+	if client.fileAPI == nil {
+		t.Fatal("NewClient() returned nil file api")
 	}
 }
 

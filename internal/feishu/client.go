@@ -137,12 +137,17 @@ func (e *LocalFileError) Unwrap() error {
 	return e.Err
 }
 
+func normalizeAppCredentials(cfg config.Config) (string, string) {
+	return strings.TrimSpace(cfg.AppID), strings.TrimSpace(cfg.AppSecret)
+}
+
 func NewClient(cfg config.Config) (*Client, error) {
-	if strings.TrimSpace(cfg.AppID) == "" || strings.TrimSpace(cfg.AppSecret) == "" {
+	appID, appSecret := normalizeAppCredentials(cfg)
+	if appID == "" || appSecret == "" {
 		return nil, &ClientError{Op: "new_client", Message: "missing app credentials"}
 	}
 
-	sdk := lark.NewClient(cfg.AppID, cfg.AppSecret)
+	sdk := lark.NewClient(appID, appSecret)
 
 	return &Client{
 		sdk:        sdk,
