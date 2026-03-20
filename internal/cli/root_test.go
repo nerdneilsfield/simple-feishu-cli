@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 
@@ -161,11 +162,39 @@ func TestListChatsTableOutputHandlesChineseNames(t *testing.T) {
 	if len(lines) != 3 {
 		t.Fatalf("line count = %d, want %d; output=%q", len(lines), 3, stdout.String())
 	}
-	if !regexp.MustCompile(`^oc_cn\s+研发群\s+ou_cn\s+on_cn$`).MatchString(lines[1]) {
-		t.Fatalf("chinese row = %q, want aligned row", lines[1])
+
+	header, chineseRow, englishRow := lines[0], lines[1], lines[2]
+	for _, tc := range []struct {
+		name string
+		line string
+		want []string
+	}{
+		{name: "chinese", line: chineseRow, want: []string{"oc_cn", "研发群", "ou_cn", "on_cn"}},
+		{name: "english", line: englishRow, want: []string{"oc_en", "Ops", "ou_en", "on_en"}},
+	} {
+		columns := regexp.MustCompile(`\s{2,}`).Split(tc.line, -1)
+		if len(columns) != 4 {
+			t.Fatalf("%s columns = %#v, want 4 table columns", tc.name, columns)
+		}
+		for i, want := range tc.want {
+			if columns[i] != want {
+				t.Fatalf("%s column %d = %q, want %q; line=%q", tc.name, i, columns[i], want, tc.line)
+			}
+		}
 	}
-	if !regexp.MustCompile(`^oc_en\s+Ops\s+ou_en\s+on_en$`).MatchString(lines[2]) {
-		t.Fatalf("english row = %q, want aligned row", lines[2])
+
+	headerOpenCol := runeColumn(header, "OWNER_OPEN_ID")
+	headerUnionCol := runeColumn(header, "OWNER_UNION_ID")
+	cnOpenCol := runeColumn(chineseRow, "ou_cn")
+	enOpenCol := runeColumn(englishRow, "ou_en")
+	cnUnionCol := runeColumn(chineseRow, "on_cn")
+	enUnionCol := runeColumn(englishRow, "on_en")
+
+	if cnOpenCol != enOpenCol || cnOpenCol != headerOpenCol {
+		t.Fatalf("OWNER_OPEN_ID column starts differ: header=%d chinese=%d english=%d\n%s", headerOpenCol, cnOpenCol, enOpenCol, stdout.String())
+	}
+	if cnUnionCol != enUnionCol || cnUnionCol != headerUnionCol {
+		t.Fatalf("OWNER_UNION_ID column starts differ: header=%d chinese=%d english=%d\n%s", headerUnionCol, cnUnionCol, enUnionCol, stdout.String())
 	}
 }
 
@@ -196,24 +225,73 @@ func TestListChatsJSONOutput(t *testing.T) {
 		t.Fatalf("Execute() error = %v", err)
 	}
 
-	var got struct {
-		Items []struct {
-			ChatID string `json:"chat_id"`
-			Name   string `json:"name"`
-			Owner  struct {
-				OpenID  string `json:"open_id"`
-				UnionID string `json:"union_id"`
-			} `json:"owner"`
-		} `json:"items"`
+	got := strings.TrimSpace(stdout.String())
+	want := `{"items":[{"chat_id":"oc_xxx","name":"报警群","owner":{"open_id":"ou_xxx","union_id":"on_xxx"}}]}`
+	if got != want {
+		t.Fatalf("json output = %q, want %q", got, want)
 	}
-	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+
+	var decoded map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &decoded); err != nil {
 		t.Fatalf("json.Unmarshal() error = %v; output=%q", err, stdout.String())
 	}
-	if len(got.Items) != 1 {
-		t.Fatalf("items len = %d, want %d", len(got.Items), 1)
+}
+
+func TestListChatsTableOutputWriteFailureReturnsExitCodeThree(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{
+		LoadConfig: func(config.LoadOptions) (config.Config, error) {
+			return config.Config{AppID: "flag-id", AppSecret: "flag-secret"}, nil
+		},
+		NewChatLister: func(config.Config) (feishu.ChatLister, error) {
+			return fakeChatLister{
+				listChats: func(context.Context) ([]feishu.ChatSummary, error) {
+					return []feishu.ChatSummary{{ChatID: "oc_xxx", Name: "Ops", Owner: feishu.ChatOwner{OpenID: "ou_xxx", UnionID: "on_xxx"}}}, nil
+				},
+			}, nil
+		},
+	})
+	cmd.SetOut(failingWriter{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"--app-id", "flag-id", "--app-secret", "flag-secret", "list", "chats"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want write error")
 	}
-	if got.Items[0].ChatID != "oc_xxx" || got.Items[0].Name != "报警群" || got.Items[0].Owner.OpenID != "ou_xxx" || got.Items[0].Owner.UnionID != "on_xxx" {
-		t.Fatalf("json items = %#v", got.Items)
+	if got := ExitCode(err); got != 3 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 3)
+	}
+	if !strings.Contains(err.Error(), "write list chats") {
+		t.Fatalf("error = %q, want write-list-chats error", err)
+	}
+}
+
+func TestListChatsJSONOutputWriteFailureReturnsExitCodeThree(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{
+		LoadConfig: func(config.LoadOptions) (config.Config, error) {
+			return config.Config{AppID: "flag-id", AppSecret: "flag-secret"}, nil
+		},
+		NewChatLister: func(config.Config) (feishu.ChatLister, error) {
+			return fakeChatLister{
+				listChats: func(context.Context) ([]feishu.ChatSummary, error) {
+					return []feishu.ChatSummary{{ChatID: "oc_xxx", Name: "Ops", Owner: feishu.ChatOwner{OpenID: "ou_xxx", UnionID: "on_xxx"}}}, nil
+				},
+			}, nil
+		},
+	})
+	cmd.SetOut(failingWriter{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"--app-id", "flag-id", "--app-secret", "flag-secret", "list", "chats", "--format", "json"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want write error")
+	}
+	if got := ExitCode(err); got != 3 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 3)
+	}
+	if !strings.Contains(err.Error(), "write list chats") {
+		t.Fatalf("error = %q, want write-list-chats error", err)
 	}
 }
 
@@ -802,6 +880,14 @@ func TestExitCodeMapsLocalFileErrorsToFour(t *testing.T) {
 	if got := ExitCode(err); got != 4 {
 		t.Fatalf("ExitCode(err) = %d, want %d", got, 4)
 	}
+}
+
+func runeColumn(line, token string) int {
+	idx := strings.Index(line, token)
+	if idx < 0 {
+		return -1
+	}
+	return utf8.RuneCountInString(line[:idx])
 }
 
 type fakeMessenger struct {
