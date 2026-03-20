@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/nerdneilsfield/simple-feishu-cli/internal/config"
@@ -26,8 +27,16 @@ func TestNewRootCmdUsesFeishuNameAndPrintsHelp(t *testing.T) {
 		t.Fatalf("Execute() error = %v", err)
 	}
 
-	if stdout.Len() == 0 {
-		t.Fatal("expected help output, got empty output")
+	help := stdout.String()
+	for _, want := range []string{
+		"Usage:\n  feishu [command]",
+		"send        Send messages or files",
+		"--app-id string",
+		"--app-secret string",
+	} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("help output missing %q:\n%s", want, help)
+		}
 	}
 }
 
