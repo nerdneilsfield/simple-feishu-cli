@@ -4,7 +4,7 @@
 
 ## 1. 目标
 
-构建一个用 Go 开发的飞书 CLI，用于在企业自建应用场景下，通过 `app_id` 和 `app_secret` 给飞书用户或群组发送文本消息与文件消息。
+构建一个用 Go 开发的飞书 CLI `feishu`，用于在企业自建应用场景下，通过 `app_id` 和 `app_secret` 给飞书用户或群组发送文本消息与文件消息。
 
 第一版目标刻意收窄为：
 
@@ -102,7 +102,18 @@ feishu send file --to-type chat_id --to oc_xxx --path ./report.pdf
 
 ### 4.5 输出约定
 
-成功时输出稳定的键值信息，例如：
+成功时输出稳定的键值信息。
+
+`send text` 与 `send file` 都必须至少输出：
+
+- `message_id`
+- `msg_type`
+- `receive_id`
+- `receive_id_type`
+
+`send file` 不额外输出上传阶段内部细节，例如 `file_key`。
+
+例如：
 
 ```text
 message_id=om_xxx
@@ -117,6 +128,14 @@ receive_id_type=chat_id
 error: feishu api error: code=99991663 msg=insufficient permission
 ```
 
+退出码约定：
+
+- `0`：成功
+- `2`：命令行参数或输入校验错误
+- `3`：配置或凭证错误
+- `4`：本地文件读写错误
+- `10`：飞书 API 错误
+
 ## 5. 配置设计
 
 ### 5.1 配置来源
@@ -125,7 +144,7 @@ error: feishu api error: code=99991663 msg=insufficient permission
 
 1. 命令行参数 `--app-id` / `--app-secret`
 2. 环境变量 `FEISHU_APP_ID` / `FEISHU_APP_SECRET`
-3. 配置文件 `~/.config/feishu-cli/config.yaml`
+3. 配置文件 `~/.config/feishu/config.yaml`
 
 ### 5.2 配置文件格式
 
@@ -139,19 +158,21 @@ app_secret: xxxxx
 - 本地默认推荐环境变量或配置文件
 - CI/CD 可通过命令行显式传参
 - 命令行参数中的 secret 可能暴露在进程参数中，因此仅作为支持方式，不作为默认推荐方式
+- Unix-like 系统上，如果配置文件权限对 group 或 other 可读写执行，则 CLI 默认拒绝加载，并提示收紧到 owner-only，例如 `0600`
+- Windows 上不做 POSIX 权限位检查，但文档中仍要求用户只将配置文件放在当前用户可访问目录
 
 ## 6. 模块设计
 
 建议目录结构：
 
 ```text
-cmd/feishu-cli/
+cmd/feishu/
 internal/cli/
 internal/config/
 internal/feishu/
 ```
 
-### 6.1 `cmd/feishu-cli/`
+### 6.1 `cmd/feishu/`
 
 - 程序入口
 - 初始化根命令
@@ -250,9 +271,29 @@ internal/feishu/
 - 应用已具备发送消息、上传文件等所需权限
 - 应用对目标用户或群组有可用的发送范围
 
-## 10. 发布与自动化
+在开始实现前，需要补充并固定 README 中列出的最小权限清单，至少覆盖：
 
-### 10.1 `goreleaser`
+- 获取 tenant access token
+- 发送消息
+- 上传文件
+
+如果某个 API 的准确权限名在设计阶段尚未确认，应在实现前通过官方文档核实，并将精确权限名写入 README 与验收清单。
+
+## 10. 验证要求
+
+在认为第一版“完成”之前，除单元测试外，必须通过一次真实飞书环境 smoke test。
+
+最低要求：
+
+1. 使用真实企业自建应用凭证成功执行一次 `send text`
+2. 使用真实企业自建应用凭证成功执行一次 `send file`
+3. 两次调用都验证退出码和稳定输出字段
+
+该验证可以手动执行，但不能省略。
+
+## 11. 发布与自动化
+
+### 11.1 `goreleaser`
 
 用于：
 
@@ -270,7 +311,7 @@ internal/feishu/
 - `windows/amd64`
 - `windows/arm64`
 
-### 10.2 GitHub Actions
+### 11.2 GitHub Actions
 
 建议两个 workflow：
 
@@ -285,8 +326,23 @@ internal/feishu/
 - 在推送 `v*` tag 时触发
 - 调用 `goreleaser`
 - 使用 `GITHUB_TOKEN` 发布 Release
+- 显式声明发布所需权限，例如 `contents: write`
+- 禁止仅以本地 `--snapshot` 构建通过作为发版链路验收标准
 
-## 11. 风险
+### 11.3 发布链路验收
+
+在首次正式 release 前，必须验证一次真实 GitHub 发布链路。
+
+最低要求：
+
+1. 基于临时 tag 或预发布 tag 触发 `release.yaml`
+2. 确认 workflow 拥有正确权限并能创建 GitHub Release
+3. 确认 release 附件与 checksum 均已上传
+4. 确认产物名与二进制名 `feishu` 一致
+
+本地 `goreleaser release --snapshot --clean` 仅用于验证打包配置，不替代真实发布验证。
+
+## 12. 风险
 
 ### 11.1 应用权限不完整
 
