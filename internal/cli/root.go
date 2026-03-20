@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/nerdneilsfield/simple-feishu-cli/internal/config"
 	"github.com/nerdneilsfield/simple-feishu-cli/internal/feishu"
@@ -106,11 +107,23 @@ func newSendTextCmd(deps Deps, f *flags) *cobra.Command {
 		Use:   "text",
 		Short: "Send a text message",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if toType == "" || toID == "" || text == "" {
-				return &cliError{code: 2, err: errors.New("--to-type, --to, and --text are required")}
+			if toType == "" {
+				return &cliError{code: 2, err: errors.New("--to-type is required")}
 			}
 			if !isAllowedReceiveIDType(toType) {
 				return &cliError{code: 2, err: fmt.Errorf("invalid --to-type %q; allowed values: open_id, user_id, union_id, chat_id", toType)}
+			}
+			if toID == "" {
+				return &cliError{code: 2, err: errors.New("--to is required")}
+			}
+			if strings.TrimSpace(toID) == "" {
+				return &cliError{code: 2, err: errors.New("--to must not be blank")}
+			}
+			if text == "" {
+				return &cliError{code: 2, err: errors.New("--text is required")}
+			}
+			if strings.TrimSpace(text) == "" {
+				return &cliError{code: 2, err: errors.New("--text must not be blank")}
 			}
 
 			cfg, err := deps.LoadConfig(config.LoadOptions{
@@ -127,7 +140,7 @@ func newSendTextCmd(deps Deps, f *flags) *cobra.Command {
 				return &cliError{code: 3, err: err}
 			}
 
-			result, err := messenger.SendText(context.Background(), feishu.TextMessageInput{
+			result, err := messenger.SendText(cmd.Context(), feishu.TextMessageInput{
 				ReceiveIDType: toType,
 				ReceiveID:     toID,
 				Text:          text,

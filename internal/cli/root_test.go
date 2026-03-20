@@ -98,8 +98,8 @@ func TestSendTextCommandRejectsMissingToType(t *testing.T) {
 	if got := ExitCode(err); got != 2 {
 		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
 	}
-	if !strings.Contains(err.Error(), "--to-type") {
-		t.Fatalf("error = %q, want --to-type requirement", err)
+	if err.Error() != "--to-type is required" {
+		t.Fatalf("error = %q, want %q", err, "--to-type is required")
 	}
 }
 
@@ -130,8 +130,24 @@ func TestSendTextCommandRejectsMissingTo(t *testing.T) {
 	if got := ExitCode(err); got != 2 {
 		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
 	}
-	if !strings.Contains(err.Error(), "--to") {
-		t.Fatalf("error = %q, want --to requirement", err)
+	if err.Error() != "--to is required" {
+		t.Fatalf("error = %q, want %q", err, "--to is required")
+	}
+}
+
+func TestSendTextCommandRejectsBlankTo(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{})
+	cmd.SetArgs([]string{"send", "text", "--to-type", "open_id", "--to", "   ", "--text", "hello"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want parameter error")
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
+	}
+	if err.Error() != "--to must not be blank" {
+		t.Fatalf("error = %q, want %q", err, "--to must not be blank")
 	}
 }
 
@@ -146,8 +162,59 @@ func TestSendTextCommandRejectsMissingText(t *testing.T) {
 	if got := ExitCode(err); got != 2 {
 		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
 	}
-	if !strings.Contains(err.Error(), "--text") {
-		t.Fatalf("error = %q, want --text requirement", err)
+	if err.Error() != "--text is required" {
+		t.Fatalf("error = %q, want %q", err, "--text is required")
+	}
+}
+
+func TestSendTextCommandRejectsBlankText(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{})
+	cmd.SetArgs([]string{"send", "text", "--to-type", "open_id", "--to", "ou_xxx", "--text", "   "})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want parameter error")
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
+	}
+	if err.Error() != "--text must not be blank" {
+		t.Fatalf("error = %q, want %q", err, "--text must not be blank")
+	}
+}
+
+func TestSendTextCommandUsesCommandContext(t *testing.T) {
+	type contextKey string
+	const key contextKey = "trace"
+
+	wantCtx := context.WithValue(context.Background(), key, "ctx-value")
+	cmd := NewRootCmdWithDeps(Deps{
+		LoadConfig: func(opts config.LoadOptions) (config.Config, error) {
+			return config.Config{AppID: "flag-id", AppSecret: "flag-secret"}, nil
+		},
+		NewMessenger: func(cfg config.Config) (feishu.Messenger, error) {
+			return fakeMessenger{
+				sendText: func(ctx context.Context, input feishu.TextMessageInput) (feishu.MessageResult, error) {
+					if got := ctx.Value(key); got != "ctx-value" {
+						t.Fatalf("context value = %#v, want %q", got, "ctx-value")
+					}
+					return feishu.MessageResult{
+						MessageID:     "om_xxx",
+						MsgType:       "text",
+						ReceiveID:     input.ReceiveID,
+						ReceiveIDType: input.ReceiveIDType,
+					}, nil
+				},
+			}, nil
+		},
+	})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"--app-id", "flag-id", "--app-secret", "flag-secret", "send", "text", "--to-type", "open_id", "--to", "ou_xxx", "--text", "hello"})
+
+	err := cmd.ExecuteContext(wantCtx)
+	if err != nil {
+		t.Fatalf("ExecuteContext() error = %v", err)
 	}
 }
 
