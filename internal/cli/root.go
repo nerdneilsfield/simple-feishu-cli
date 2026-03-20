@@ -12,8 +12,9 @@ import (
 )
 
 type Deps struct {
-	LoadConfig   func(config.LoadOptions) (config.Config, error)
-	NewMessenger func(config.Config) (feishu.Messenger, error)
+	LoadConfig    func(config.LoadOptions) (config.Config, error)
+	NewMessenger  func(config.Config) (feishu.Messenger, error)
+	NewChatLister func(config.Config) (feishu.ChatLister, error)
 }
 
 type flags struct {
@@ -43,8 +44,9 @@ func (e *cliError) Unwrap() error {
 
 func NewRootCmd() *cobra.Command {
 	return NewRootCmdWithDeps(Deps{
-		LoadConfig:   config.Load,
-		NewMessenger: newMessenger,
+		LoadConfig:    config.Load,
+		NewMessenger:  newMessenger,
+		NewChatLister: newChatLister,
 	})
 }
 
@@ -54,6 +56,9 @@ func NewRootCmdWithDeps(deps Deps) *cobra.Command {
 	}
 	if deps.NewMessenger == nil {
 		deps.NewMessenger = newMessenger
+	}
+	if deps.NewChatLister == nil {
+		deps.NewChatLister = newChatLister
 	}
 
 	f := &flags{}
@@ -68,7 +73,10 @@ func NewRootCmdWithDeps(deps Deps) *cobra.Command {
 	cmd.PersistentFlags().StringVar(&f.appSecret, "app-secret", "", "Feishu app secret")
 	cmd.PersistentFlags().StringVar(&f.configPath, "config", "", "Path to config file")
 	cmd.SetHelpCommand(newHelpCmd(cmd))
-	cmd.AddCommand(newSendCmd(deps, f))
+	cmd.AddCommand(
+		newSendCmd(deps, f),
+		newListCmd(deps, f),
+	)
 
 	return cmd
 }
@@ -128,6 +136,60 @@ func newHelpCmd(root *cobra.Command) *cobra.Command {
 			return target.Help()
 		},
 	}
+}
+
+func newListCmd(deps Deps, f *flags) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List Feishu resources",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return cmd.Help()
+		},
+	}
+
+	cmd.AddCommand(newListChatsCmd(deps, f))
+
+	return cmd
+}
+
+func newListChatsCmd(deps Deps, f *flags) *cobra.Command {
+	format := "table"
+
+	cmd := &cobra.Command{
+		Use:   "chats",
+		Short: "List chats joined by the app bot",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if !isAllowedListFormat(format) {
+				return &cliError{code: 2, err: fmt.Errorf("invalid --format %q; allowed values: table, json", format)}
+			}
+
+			cfg, err := deps.LoadConfig(config.LoadOptions{
+				AppID:      f.appID,
+				AppSecret:  f.appSecret,
+				ConfigPath: f.configPath,
+			})
+			if err != nil {
+				return &cliError{code: 3, err: err}
+			}
+
+			lister, err := deps.NewChatLister(cfg)
+			if err != nil {
+				return &cliError{code: 3, err: err}
+			}
+
+			if _, err := lister.ListChats(cmd.Context()); err != nil {
+				return classifyRunError(err)
+			}
+
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&format, "format", format, "Output format")
+
+	return cmd
 }
 
 func newSendCmd(deps Deps, f *flags) *cobra.Command {
@@ -285,7 +347,20 @@ func isAllowedReceiveIDType(value string) bool {
 	}
 }
 
+func isAllowedListFormat(value string) bool {
+	switch value {
+	case "table", "json":
+		return true
+	default:
+		return false
+	}
+}
+
 func newMessenger(cfg config.Config) (feishu.Messenger, error) {
+	return feishu.NewClient(cfg)
+}
+
+func newChatLister(cfg config.Config) (feishu.ChatLister, error) {
 	return feishu.NewClient(cfg)
 }
 

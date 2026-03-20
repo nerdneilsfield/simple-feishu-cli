@@ -30,6 +30,7 @@ func TestNewRootCmdUsesFeishuNameAndPrintsHelp(t *testing.T) {
 	help := stdout.String()
 	for _, want := range []string{
 		"Usage:\n  feishu [command]",
+		"list        List Feishu resources",
 		"send        Send messages or files",
 		"--app-id string",
 		"--app-secret string",
@@ -37,6 +38,100 @@ func TestNewRootCmdUsesFeishuNameAndPrintsHelp(t *testing.T) {
 		if !strings.Contains(help, want) {
 			t.Fatalf("help output missing %q:\n%s", want, help)
 		}
+	}
+}
+
+func TestListChatsCommandIsDiscoverableInHelp(t *testing.T) {
+	cmd := NewRootCmd()
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+	cmd.SetArgs([]string{"list", "--help"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	help := stdout.String()
+	for _, want := range []string{
+		"feishu list [command]",
+		"chats       List chats joined by the app bot",
+	} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("help output missing %q:\n%s", want, help)
+		}
+	}
+}
+
+func TestListChatsCommandRejectsInvalidFormat(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{
+		LoadConfig: func(config.LoadOptions) (config.Config, error) {
+			t.Fatal("LoadConfig should not be called for invalid --format")
+			return config.Config{}, nil
+		},
+	})
+	cmd.SetArgs([]string{"list", "chats", "--format", "yaml"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want parameter error")
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
+	}
+	if !strings.Contains(err.Error(), "invalid --format") {
+		t.Fatalf("error = %q, want invalid --format message", err)
+	}
+}
+
+func TestListChatsCommandLoadsConfigAndCallsListMethod(t *testing.T) {
+	wantCfg := config.Config{AppID: "flag-id", AppSecret: "flag-secret"}
+	loadCalled := false
+	newListerCalled := false
+	listCalled := false
+
+	cmd := NewRootCmdWithDeps(Deps{
+		LoadConfig: func(opts config.LoadOptions) (config.Config, error) {
+			loadCalled = true
+			if opts.AppID != "flag-id" || opts.AppSecret != "flag-secret" {
+				t.Fatalf("LoadConfig() got %#v", opts)
+			}
+			return wantCfg, nil
+		},
+		NewChatLister: func(cfg config.Config) (feishu.ChatLister, error) {
+			newListerCalled = true
+			if cfg != wantCfg {
+				t.Fatalf("NewChatLister() cfg = %#v, want %#v", cfg, wantCfg)
+			}
+			return fakeChatLister{
+				listChats: func(context.Context) ([]feishu.ChatSummary, error) {
+					listCalled = true
+					return []feishu.ChatSummary{{ChatID: "oc_xxx", Name: "Example"}}, nil
+				},
+			}, nil
+		},
+		NewMessenger: func(config.Config) (feishu.Messenger, error) {
+			t.Fatal("NewMessenger should not be called by list chats")
+			return nil, nil
+		},
+	})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"--app-id", "flag-id", "--app-secret", "flag-secret", "list", "chats"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	if !loadCalled {
+		t.Fatal("LoadConfig was not called")
+	}
+	if !newListerCalled {
+		t.Fatal("NewChatLister was not called")
+	}
+	if !listCalled {
+		t.Fatal("ListChats was not called")
 	}
 }
 
@@ -543,6 +638,14 @@ func (f fakeMessenger) SendText(ctx context.Context, input feishu.TextMessageInp
 
 func (f fakeMessenger) SendFile(ctx context.Context, input feishu.FileMessageInput) (feishu.MessageResult, error) {
 	return f.sendFile(ctx, input)
+}
+
+type fakeChatLister struct {
+	listChats func(context.Context) ([]feishu.ChatSummary, error)
+}
+
+func (f fakeChatLister) ListChats(ctx context.Context) ([]feishu.ChatSummary, error) {
+	return f.listChats(ctx)
 }
 
 type failingWriter struct{}
