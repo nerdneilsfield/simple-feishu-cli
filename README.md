@@ -313,8 +313,15 @@ chmod 600 ~/.config/feishu/config.yaml
 
 ## 开发
 
-运行测试：
+本地基线校验入口：
 
 ```bash
-go test ./...
+make check
+```
+
+单独运行某一项：
+
+```bash
+make test
+make vet
 ```
