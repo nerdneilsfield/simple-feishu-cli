@@ -218,6 +218,38 @@ func TestSendTextCommandUsesCommandContext(t *testing.T) {
 	}
 }
 
+func TestSendFileCommandRejectsInvalidToType(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{})
+	cmd.SetArgs([]string{"send", "file", "--to-type", "email", "--to", "ou_xxx", "--path", "/tmp/report.pdf"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want parameter error")
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
+	}
+	if !strings.Contains(err.Error(), "invalid --to-type") {
+		t.Fatalf("error = %q, want invalid --to-type message", err)
+	}
+}
+
+func TestSendFileCommandRejectsMissingPath(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{})
+	cmd.SetArgs([]string{"send", "file", "--to-type", "open_id", "--to", "ou_xxx"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want parameter error")
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
+	}
+	if !strings.Contains(err.Error(), "--path") {
+		t.Fatalf("error = %q, want --path requirement", err)
+	}
+}
+
 func TestExitCodeMapsConfigErrorsToThree(t *testing.T) {
 	cmd := NewRootCmdWithDeps(Deps{
 		LoadConfig: func(config.LoadOptions) (config.Config, error) {

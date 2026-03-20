@@ -171,6 +171,9 @@ func newSendFileCmd(deps Deps, f *flags) *cobra.Command {
 			if toType == "" || toID == "" || path == "" {
 				return &cliError{code: 2, err: errors.New("--to-type, --to, and --path are required")}
 			}
+			if !isAllowedReceiveIDType(toType) {
+				return &cliError{code: 2, err: fmt.Errorf("invalid --to-type %q; allowed values: open_id, user_id, union_id, chat_id", toType)}
+			}
 
 			cfg, err := deps.LoadConfig(config.LoadOptions{
 				AppID:      f.appID,

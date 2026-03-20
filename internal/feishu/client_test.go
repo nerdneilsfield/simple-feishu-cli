@@ -237,6 +237,45 @@ func TestSendFileUploadsFileAndSendsMessage(t *testing.T) {
 	}
 }
 
+func TestSendFileReturnsAPIErrorWhenPostUploadSendFails(t *testing.T) {
+	path := writeTempFile(t, "report.pdf", "hello")
+	client := &Client{
+		fileAPI: &fakeFileService{
+			resp: &larkim.CreateFileResp{
+				CodeError: larkcore.CodeError{Code: 0},
+				Data: &larkim.CreateFileRespData{
+					FileKey: larkcore.StringPtr("file_xxx"),
+				},
+			},
+		},
+		messageAPI: &fakeMessageService{
+			resp: &larkim.CreateMessageResp{
+				CodeError: larkcore.CodeError{Code: 99991663, Msg: "insufficient permission"},
+			},
+		},
+	}
+
+	_, err := client.SendFile(context.Background(), FileMessageInput{
+		ReceiveIDType: larkim.ReceiveIdTypeOpenId,
+		ReceiveID:     "ou_xxx",
+		FilePath:      path,
+	})
+	if err == nil {
+		t.Fatal("SendFile() error = nil, want api error")
+	}
+
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("SendFile() error = %T, want *APIError", err)
+	}
+	if apiErr.Op != "send_file" {
+		t.Fatalf("SendFile() op = %q, want %q", apiErr.Op, "send_file")
+	}
+	if apiErr.Code != 99991663 {
+		t.Fatalf("SendFile() code = %d, want %d", apiErr.Code, 99991663)
+	}
+}
+
 func TestSendFileFailsBeforeUploadWhenMessageAPIUnavailable(t *testing.T) {
 	path := writeTempFile(t, "report.pdf", "hello")
 	fileAPI := &fakeFileService{}
