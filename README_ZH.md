@@ -14,7 +14,7 @@
 - `./feishu send file`
 - `./feishu list chats`
 - 凭证优先级：命令行参数 > 环境变量 > 配置文件
-- 成功输出字段固定：`message_id`、`msg_type`、`receive_id`、`receive_id_type`
+- 发送消息命令的成功输出字段固定：`message_id`、`msg_type`、`receive_id`、`receive_id_type`
 - 退出码固定：`0`、`2`、`3`、`4`、`10`
 
 当前不做：
@@ -60,7 +60,7 @@ export FEISHU_APP_SECRET='secret_xxx'
   --path ./report.pdf
 ```
 
-成功输出固定为：
+`send text` 和 `send file` 的成功输出固定为：
 
 ```text
 message_id=om_xxx

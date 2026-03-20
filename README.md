@@ -14,7 +14,7 @@ Current scope:
 - `./feishu send file`
 - `./feishu list chats`
 - credential precedence: CLI flags > environment variables > config file
-- stable success fields: `message_id`, `msg_type`, `receive_id`, `receive_id_type`
+- stable success fields for message sends: `message_id`, `msg_type`, `receive_id`, `receive_id_type`
 - fixed exit codes: `0`, `2`, `3`, `4`, `10`
 
 Out of scope for now:
@@ -60,7 +60,7 @@ Upload and send a file:
   --path ./report.pdf
 ```
 
-Successful output is always:
+Successful output for `send text` and `send file` is:
 
 ```text
 message_id=om_xxx
