@@ -86,7 +86,7 @@ func ExitCode(err error) int {
 		return 2
 	}
 
-	return 1
+	return 3
 }
 
 func isCobraInputError(err error) bool {

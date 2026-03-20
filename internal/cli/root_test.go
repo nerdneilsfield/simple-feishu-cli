@@ -225,8 +225,8 @@ func TestSendTextCommandReturnsErrorWhenOutputWriteFails(t *testing.T) {
 	if err == nil {
 		t.Fatal("Execute() error = nil, want write error")
 	}
-	if got := ExitCode(err); got != 1 {
-		t.Fatalf("ExitCode(err) = %d, want %d", got, 1)
+	if got := ExitCode(err); got != 3 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 3)
 	}
 	if !strings.Contains(err.Error(), "write result") {
 		t.Fatalf("error = %q, want write-result error", err)
@@ -367,8 +367,8 @@ func TestSendFileCommandReturnsErrorWhenOutputWriteFails(t *testing.T) {
 	if err == nil {
 		t.Fatal("Execute() error = nil, want write error")
 	}
-	if got := ExitCode(err); got != 1 {
-		t.Fatalf("ExitCode(err) = %d, want %d", got, 1)
+	if got := ExitCode(err); got != 3 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 3)
 	}
 	if !strings.Contains(err.Error(), "write result") {
 		t.Fatalf("error = %q, want write-result error", err)
@@ -495,6 +495,13 @@ func TestExitCodeMapsConfigErrorsToThree(t *testing.T) {
 
 func TestExitCodeMapsClientErrorsToThree(t *testing.T) {
 	err := classifyRunError(&feishu.ClientError{Op: "send_text", Message: "message api is not configured"})
+	if got := ExitCode(err); got != 3 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 3)
+	}
+}
+
+func TestExitCodeMapsUncategorizedErrorsToThree(t *testing.T) {
+	err := errors.New("write result: write failed")
 	if got := ExitCode(err); got != 3 {
 		t.Fatalf("ExitCode(err) = %d, want %d", got, 3)
 	}
