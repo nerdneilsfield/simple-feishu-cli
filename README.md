@@ -12,6 +12,7 @@ Current scope:
 
 - `./feishu send text`
 - `./feishu send file`
+- `./feishu list chats`
 - credential precedence: CLI flags > environment variables > config file
 - stable success fields: `message_id`, `msg_type`, `receive_id`, `receive_id_type`
 - fixed exit codes: `0`, `2`, `3`, `4`, `10`
@@ -137,6 +138,12 @@ Any one of these permissions is enough for file upload:
 - `im:resource`
 - `im:resource:upload`
 
+Any one of these permissions is enough for chat listing:
+
+- `im:chat`
+- `im:chat:read`
+- `im:chat:readonly`
+
 Additional notes:
 
 - both message sending and file upload require bot capability
@@ -165,7 +172,7 @@ Official entry points for obtaining IDs:
 Practical defaults:
 
 - for a single user, prefer `open_id`
-- for a group, use `chat_id`
+- for a group, use `chat_id`; groups do not use `open_id` as the send target
 - if another system already gives you `user_id` or `union_id`, the CLI accepts those directly
 
 The official message API docs also list these `receive_id_type` values.
@@ -173,6 +180,18 @@ The official message API docs also list these `receive_id_type` values.
 </details>
 
 ## More examples
+
+List joined chats:
+
+```bash
+./feishu list chats
+```
+
+List joined chats as JSON:
+
+```bash
+./feishu list chats --format json
+```
 
 CI/CD with explicit flags:
 

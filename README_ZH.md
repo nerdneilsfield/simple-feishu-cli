@@ -12,6 +12,7 @@
 
 - `./feishu send text`
 - `./feishu send file`
+- `./feishu list chats`
 - 凭证优先级：命令行参数 > 环境变量 > 配置文件
 - 成功输出字段固定：`message_id`、`msg_type`、`receive_id`、`receive_id_type`
 - 退出码固定：`0`、`2`、`3`、`4`、`10`
@@ -137,6 +138,12 @@ chmod 600 ~/.config/feishu/config.yaml
 - `im:resource`
 - `im:resource:upload`
 
+群列表查询满足以下任一权限即可：
+
+- `im:chat`
+- `im:chat:read`
+- `im:chat:readonly`
+
 补充：
 
 - 发送消息和上传文件都要求应用开启机器人能力
@@ -165,7 +172,7 @@ chmod 600 ~/.config/feishu/config.yaml
 实践上：
 
 - 给单个用户发消息时优先用 `open_id`
-- 给群发消息时用 `chat_id`
+- 给群发消息时用 `chat_id`；群组不是用 `open_id` 作为发送目标
 - 如果别的系统已经给你 `user_id` 或 `union_id`，CLI 也可以直接使用
 
 官方消息接口文档里也列出了这些 `receive_id_type`。
@@ -173,6 +180,18 @@ chmod 600 ~/.config/feishu/config.yaml
 </details>
 
 ## 更多示例
+
+列出机器人已加入的群：
+
+```bash
+./feishu list chats
+```
+
+以 JSON 输出群列表：
+
+```bash
+./feishu list chats --format json
+```
 
 CI/CD 场景下用显式参数：
 
