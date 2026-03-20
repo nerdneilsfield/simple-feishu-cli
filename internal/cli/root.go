@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -168,11 +167,23 @@ func newSendFileCmd(deps Deps, f *flags) *cobra.Command {
 		Use:   "file",
 		Short: "Upload and send a file",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if toType == "" || toID == "" || path == "" {
-				return &cliError{code: 2, err: errors.New("--to-type, --to, and --path are required")}
+			if toType == "" {
+				return &cliError{code: 2, err: errors.New("--to-type is required")}
 			}
 			if !isAllowedReceiveIDType(toType) {
 				return &cliError{code: 2, err: fmt.Errorf("invalid --to-type %q; allowed values: open_id, user_id, union_id, chat_id", toType)}
+			}
+			if toID == "" {
+				return &cliError{code: 2, err: errors.New("--to is required")}
+			}
+			if strings.TrimSpace(toID) == "" {
+				return &cliError{code: 2, err: errors.New("--to must not be blank")}
+			}
+			if path == "" {
+				return &cliError{code: 2, err: errors.New("--path is required")}
+			}
+			if strings.TrimSpace(path) == "" {
+				return &cliError{code: 2, err: errors.New("--path must not be blank")}
 			}
 
 			cfg, err := deps.LoadConfig(config.LoadOptions{
@@ -189,7 +200,7 @@ func newSendFileCmd(deps Deps, f *flags) *cobra.Command {
 				return &cliError{code: 3, err: err}
 			}
 
-			result, err := messenger.SendFile(context.Background(), feishu.FileMessageInput{
+			result, err := messenger.SendFile(cmd.Context(), feishu.FileMessageInput{
 				ReceiveIDType: toType,
 				ReceiveID:     toID,
 				FilePath:      path,

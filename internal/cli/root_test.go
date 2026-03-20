@@ -218,6 +218,111 @@ func TestSendTextCommandUsesCommandContext(t *testing.T) {
 	}
 }
 
+func TestSendFileCommandOutputsStableFields(t *testing.T) {
+	type contextKey string
+	const key contextKey = "trace"
+
+	wantCtx := context.WithValue(context.Background(), key, "ctx-value")
+	cmd := NewRootCmdWithDeps(Deps{
+		LoadConfig: func(opts config.LoadOptions) (config.Config, error) {
+			if opts.AppID != "flag-id" || opts.AppSecret != "flag-secret" {
+				t.Fatalf("LoadConfig() got %#v", opts)
+			}
+			return config.Config{AppID: "flag-id", AppSecret: "flag-secret"}, nil
+		},
+		NewMessenger: func(cfg config.Config) (feishu.Messenger, error) {
+			return fakeMessenger{
+				sendFile: func(ctx context.Context, input feishu.FileMessageInput) (feishu.MessageResult, error) {
+					if got := ctx.Value(key); got != "ctx-value" {
+						t.Fatalf("context value = %#v, want %q", got, "ctx-value")
+					}
+					if input.ReceiveIDType != "chat_id" || input.ReceiveID != "oc_xxx" || input.FilePath != "./report.pdf" {
+						t.Fatalf("SendFile input = %#v", input)
+					}
+					return feishu.MessageResult{
+						MessageID:     "om_file",
+						MsgType:       "file",
+						ReceiveID:     "oc_xxx",
+						ReceiveIDType: "chat_id",
+					}, nil
+				},
+			}, nil
+		},
+	})
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+	cmd.SetArgs([]string{
+		"--app-id", "flag-id",
+		"--app-secret", "flag-secret",
+		"send", "file",
+		"--to-type", "chat_id",
+		"--to", "oc_xxx",
+		"--path", "./report.pdf",
+	})
+
+	if err := cmd.ExecuteContext(wantCtx); err != nil {
+		t.Fatalf("ExecuteContext() error = %v", err)
+	}
+
+	want := "message_id=om_file\nmsg_type=file\nreceive_id=oc_xxx\nreceive_id_type=chat_id\n"
+	if stdout.String() != want {
+		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+	}
+	if strings.Contains(stdout.String(), "file_key") {
+		t.Fatalf("stdout = %q, must not include file_key", stdout.String())
+	}
+}
+
+func TestSendFileCommandRejectsMissingToType(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{})
+	cmd.SetArgs([]string{"send", "file", "--to", "oc_xxx", "--path", "./report.pdf"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want parameter error")
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
+	}
+	if err.Error() != "--to-type is required" {
+		t.Fatalf("error = %q, want %q", err, "--to-type is required")
+	}
+}
+
+func TestSendFileCommandRejectsMissingTo(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{})
+	cmd.SetArgs([]string{"send", "file", "--to-type", "chat_id", "--path", "./report.pdf"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want parameter error")
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
+	}
+	if err.Error() != "--to is required" {
+		t.Fatalf("error = %q, want %q", err, "--to is required")
+	}
+}
+
+func TestSendFileCommandRejectsBlankTo(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{})
+	cmd.SetArgs([]string{"send", "file", "--to-type", "chat_id", "--to", "   ", "--path", "./report.pdf"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want parameter error")
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
+	}
+	if err.Error() != "--to must not be blank" {
+		t.Fatalf("error = %q, want %q", err, "--to must not be blank")
+	}
+}
+
 func TestSendFileCommandRejectsInvalidToType(t *testing.T) {
 	cmd := NewRootCmdWithDeps(Deps{})
 	cmd.SetArgs([]string{"send", "file", "--to-type", "email", "--to", "ou_xxx", "--path", "/tmp/report.pdf"})
@@ -245,8 +350,24 @@ func TestSendFileCommandRejectsMissingPath(t *testing.T) {
 	if got := ExitCode(err); got != 2 {
 		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
 	}
-	if !strings.Contains(err.Error(), "--path") {
-		t.Fatalf("error = %q, want --path requirement", err)
+	if err.Error() != "--path is required" {
+		t.Fatalf("error = %q, want %q", err, "--path is required")
+	}
+}
+
+func TestSendFileCommandRejectsBlankPath(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{})
+	cmd.SetArgs([]string{"send", "file", "--to-type", "open_id", "--to", "ou_xxx", "--path", "   "})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want parameter error")
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
+	}
+	if err.Error() != "--path must not be blank" {
+		t.Fatalf("error = %q, want %q", err, "--path must not be blank")
 	}
 }
 
