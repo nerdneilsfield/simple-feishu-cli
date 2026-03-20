@@ -55,9 +55,11 @@ type ChatLister interface {
 }
 
 type Client struct {
-	sdk        *lark.Client
-	fileAPI    fileAPI
-	messageAPI messageAPI
+	sdk         *lark.Client
+	fileAPI     fileAPI
+	messageAPI  messageAPI
+	chatListAPI chatListAPI
+	chatGetAPI  chatGetAPI
 }
 
 type APIError struct {
@@ -85,6 +87,14 @@ type messageAPI interface {
 
 type fileAPI interface {
 	Create(ctx context.Context, req *larkim.CreateFileReq, options ...larkcore.RequestOptionFunc) (*larkim.CreateFileResp, error)
+}
+
+type chatListAPI interface {
+	List(ctx context.Context, req *larkim.ListChatReq, options ...larkcore.RequestOptionFunc) (*larkim.ListChatResp, error)
+}
+
+type chatGetAPI interface {
+	Get(ctx context.Context, req *larkim.GetChatReq, options ...larkcore.RequestOptionFunc) (*larkim.GetChatResp, error)
 }
 
 func (e *APIError) Error() string {
@@ -150,15 +160,98 @@ func NewClient(cfg config.Config) (*Client, error) {
 	sdk := lark.NewClient(appID, appSecret)
 
 	return &Client{
-		sdk:        sdk,
-		fileAPI:    sdk.Im.V1.File,
-		messageAPI: sdk.Im.V1.Message,
+		sdk:         sdk,
+		fileAPI:     sdk.Im.V1.File,
+		messageAPI:  sdk.Im.V1.Message,
+		chatListAPI: sdk.Im.V1.Chat,
+		chatGetAPI:  sdk.Im.V1.Chat,
 	}, nil
 }
 
+const chatListPageSize = 100
+
 func (c *Client) ListChats(ctx context.Context) ([]ChatSummary, error) {
-	_ = ctx
-	return nil, &ClientError{Op: "list_chats", Message: "chat list api is not configured"}
+	if c == nil || c.chatListAPI == nil {
+		return nil, &ClientError{Op: "list_chats", Message: "chat list api is not configured"}
+	}
+	if c.chatGetAPI == nil {
+		return nil, &ClientError{Op: "list_chats", Message: "chat get api is not configured"}
+	}
+
+	var (
+		pageToken string
+		results   []ChatSummary
+	)
+
+	for {
+		builder := larkim.NewListChatReqBuilder().
+			UserIdType(larkim.UserIdTypeListChatOpenId).
+			PageSize(chatListPageSize)
+		if pageToken != "" {
+			builder.PageToken(pageToken)
+		}
+		req := builder.Build()
+
+		resp, err := c.chatListAPI.List(ctx, req)
+		if err != nil {
+			return nil, wrapError("list_chats", err)
+		}
+		if !resp.Success() {
+			return nil, wrapError("list_chats", resp.CodeError)
+		}
+		if resp.Data == nil {
+			return nil, &APIError{Op: "list_chats", Message: "missing response data"}
+		}
+
+		for _, item := range resp.Data.Items {
+			if item == nil {
+				continue
+			}
+
+			summary := ChatSummary{
+				ChatID: larkcore.StringValue(item.ChatId),
+				Name:   larkcore.StringValue(item.Name),
+			}
+			openID, err := c.getChatOwnerID(ctx, summary.ChatID, larkim.UserIdTypeGetChatOpenId)
+			if err != nil {
+				return nil, err
+			}
+			unionID, err := c.getChatOwnerID(ctx, summary.ChatID, larkim.UserIdTypeGetChatUnionId)
+			if err != nil {
+				return nil, err
+			}
+			summary.Owner.OpenID = openID
+			summary.Owner.UnionID = unionID
+			results = append(results, summary)
+		}
+
+		if !larkcore.BoolValue(resp.Data.HasMore) {
+			break
+		}
+		pageToken = larkcore.StringValue(resp.Data.PageToken)
+	}
+
+	return results, nil
+}
+
+func (c *Client) getChatOwnerID(ctx context.Context, chatID, userIDType string) (string, error) {
+	req := larkim.NewGetChatReqBuilder().
+		ChatId(chatID).
+		UserIdType(userIDType).
+		Build()
+
+	resp, err := c.chatGetAPI.Get(ctx, req)
+	if err != nil {
+		return "", wrapError("get_chat", err)
+	}
+	if !resp.Success() {
+		return "", wrapError("get_chat", resp.CodeError)
+	}
+	if resp.Data == nil {
+		return "", nil
+	}
+
+	return larkcore.StringValue(resp.Data.OwnerId), nil
 }
 
 func (c *Client) SendText(ctx context.Context, input TextMessageInput) (MessageResult, error) {

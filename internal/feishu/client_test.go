@@ -56,6 +56,98 @@ func TestListChatsReturnsClientErrorWhenChatListingIsUnconfigured(t *testing.T) 
 	}
 }
 
+func TestListChatsAggregatesOwnerIDsAcrossPages(t *testing.T) {
+	listAPI := &fakeChatListService{
+		resps: []*larkim.ListChatResp{
+			{
+				CodeError: larkcore.CodeError{Code: 0},
+				Data: &larkim.ListChatRespData{
+					Items: []*larkim.ListChat{
+						larkim.NewListChatBuilder().
+							ChatId("oc_first").
+							Name("Engineering").
+							Build(),
+					},
+					HasMore:   larkcore.BoolPtr(true),
+					PageToken: larkcore.StringPtr("page-2"),
+				},
+			},
+			{
+				CodeError: larkcore.CodeError{Code: 0},
+				Data: &larkim.ListChatRespData{
+					Items: []*larkim.ListChat{
+						larkim.NewListChatBuilder().
+							ChatId("oc_second").
+							Name("Operations").
+							Build(),
+					},
+					HasMore: larkcore.BoolPtr(false),
+				},
+			},
+		},
+	}
+	getAPI := &fakeChatGetService{
+		resps: map[string]*larkim.GetChatResp{
+			"oc_first|open_id": {
+				CodeError: larkcore.CodeError{Code: 0},
+				Data: &larkim.GetChatRespData{OwnerId: larkcore.StringPtr("ou_first")},
+			},
+			"oc_first|union_id": {
+				CodeError: larkcore.CodeError{Code: 0},
+				Data: &larkim.GetChatRespData{OwnerId: larkcore.StringPtr("on_first")},
+			},
+			"oc_second|open_id": {
+				CodeError: larkcore.CodeError{Code: 0},
+				Data: &larkim.GetChatRespData{OwnerId: larkcore.StringPtr("ou_second")},
+			},
+			"oc_second|union_id": {
+				CodeError: larkcore.CodeError{Code: 0},
+				Data: &larkim.GetChatRespData{OwnerId: larkcore.StringPtr("on_second")},
+			},
+		},
+	}
+	client := &Client{chatListAPI: listAPI, chatGetAPI: getAPI}
+
+	got, err := client.ListChats(context.Background())
+	if err != nil {
+		t.Fatalf("ListChats() error = %v", err)
+	}
+
+	want := []ChatSummary{
+		{
+			ChatID: "oc_first",
+			Name:   "Engineering",
+			Owner: ChatOwner{OpenID: "ou_first", UnionID: "on_first"},
+		},
+		{
+			ChatID: "oc_second",
+			Name:   "Operations",
+			Owner: ChatOwner{OpenID: "ou_second", UnionID: "on_second"},
+		},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ListChats() = %#v, want %#v", got, want)
+	}
+
+	if len(listAPI.reqs) != 2 {
+		t.Fatalf("list request count = %d, want %d", len(listAPI.reqs), 2)
+	}
+	if got := queryParamValue(listAPI.reqs[0], "user_id_type"); got != larkim.UserIdTypeListChatOpenId {
+		t.Fatalf("first list user_id_type = %q, want %q", got, larkim.UserIdTypeListChatOpenId)
+	}
+	if got := queryParamValue(listAPI.reqs[0], "page_token"); got != "" {
+		t.Fatalf("first list page_token = %q, want empty", got)
+	}
+	if got := queryParamValue(listAPI.reqs[1], "page_token"); got != "page-2" {
+		t.Fatalf("second list page_token = %q, want %q", got, "page-2")
+	}
+
+	wantGetCalls := []string{"oc_first|open_id", "oc_first|union_id", "oc_second|open_id", "oc_second|union_id"}
+	if !reflect.DeepEqual(getAPI.calls, wantGetCalls) {
+		t.Fatalf("get chat calls = %#v, want %#v", getAPI.calls, wantGetCalls)
+	}
+}
+
 func TestNormalizeAppCredentialsTrimsWhitespace(t *testing.T) {
 	appID, appSecret := normalizeAppCredentials(config.Config{
 		AppID:     "  cli_xxx  ",
@@ -86,6 +178,12 @@ func TestNewClientWiresSendDependencies(t *testing.T) {
 	}
 	if client.fileAPI == nil {
 		t.Fatal("NewClient() returned nil file api")
+	}
+	if client.chatListAPI == nil {
+		t.Fatal("NewClient() returned nil chat list api")
+	}
+	if client.chatGetAPI == nil {
+		t.Fatal("NewClient() returned nil chat get api")
 	}
 }
 
@@ -476,6 +574,48 @@ type fakeMessageService struct {
 	err  error
 }
 
+type fakeChatListService struct {
+	reqs  []*larkim.ListChatReq
+	resps []*larkim.ListChatResp
+	err   error
+}
+
+func (f *fakeChatListService) List(_ context.Context, req *larkim.ListChatReq, _ ...larkcore.RequestOptionFunc) (*larkim.ListChatResp, error) {
+	f.reqs = append(f.reqs, req)
+	if f.err != nil {
+		return nil, f.err
+	}
+	if len(f.resps) == 0 {
+		return nil, errors.New("unexpected chat list call")
+	}
+	resp := f.resps[0]
+	f.resps = f.resps[1:]
+	return resp, nil
+}
+
+type fakeChatGetService struct {
+	reqs  []*larkim.GetChatReq
+	resps map[string]*larkim.GetChatResp
+	err   error
+	calls []string
+}
+
+func (f *fakeChatGetService) Get(_ context.Context, req *larkim.GetChatReq, _ ...larkcore.RequestOptionFunc) (*larkim.GetChatResp, error) {
+	f.reqs = append(f.reqs, req)
+	chatID := pathParamValue(req, "chat_id")
+	userIDType := queryParamValue(req, "user_id_type")
+	key := chatID + "|" + userIDType
+	f.calls = append(f.calls, key)
+	if f.err != nil {
+		return nil, f.err
+	}
+	resp, ok := f.resps[key]
+	if !ok {
+		return nil, errors.New("unexpected get chat call: " + key)
+	}
+	return resp, nil
+}
+
 func (f *fakeMessageService) Create(_ context.Context, req *larkim.CreateMessageReq, _ ...larkcore.RequestOptionFunc) (*larkim.CreateMessageResp, error) {
 	f.req = req
 	if f.err != nil {
@@ -535,4 +675,24 @@ func queryParamValue(req interface{}, key string) string {
 		return ""
 	}
 	return values[0]
+}
+
+func pathParamValue(req interface{}, key string) string {
+	if req == nil {
+		return ""
+	}
+
+	v := reflect.ValueOf(req)
+	if v.Kind() != reflect.Ptr || v.IsNil() {
+		return ""
+	}
+
+	apiReqField := v.Elem().FieldByName("apiReq")
+	if !apiReqField.IsValid() || apiReqField.IsNil() {
+		return ""
+	}
+	apiReqValue := reflect.NewAt(apiReqField.Type(), unsafe.Pointer(apiReqField.UnsafeAddr())).Elem()
+	pathParamsField := apiReqValue.Elem().FieldByName("PathParams")
+	pathParamsValue := reflect.NewAt(pathParamsField.Type(), unsafe.Pointer(pathParamsField.UnsafeAddr())).Elem().Interface().(larkcore.PathParams)
+	return pathParamsValue[key]
 }
