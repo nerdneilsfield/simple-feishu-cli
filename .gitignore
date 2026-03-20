@@ -2,8 +2,6 @@
 /dist/
 /feishu
 /feishu.exe
-/feishu-*
-/feishu_*
 
 # Local config files
 /config.toml

@@ -80,16 +80,12 @@ Credential sources are resolved in this order:
 Example config file in this repo:
 
 ```bash
+mkdir -p ~/.config/feishu
 cp config.example.yaml ~/.config/feishu/config.yaml
 chmod 600 ~/.config/feishu/config.yaml
 ```
 
-`config.example.yaml` contains:
-
-```yaml
-app_id: cli_xxx
-app_secret: secret_xxx
-```
+See `config.example.yaml` for the example schema.
 
 Use a custom config path when needed:
 

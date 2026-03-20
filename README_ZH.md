@@ -80,16 +80,12 @@ receive_id_type=open_id
 仓库里提供了示例配置：
 
 ```bash
+mkdir -p ~/.config/feishu
 cp config.example.yaml ~/.config/feishu/config.yaml
 chmod 600 ~/.config/feishu/config.yaml
 ```
 
-`config.example.yaml` 内容如下：
-
-```yaml
-app_id: cli_xxx
-app_secret: secret_xxx
-```
+示例字段请直接参考 `config.example.yaml`。
 
 如果你要指定自定义配置文件：
 
