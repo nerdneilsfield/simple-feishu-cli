@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"text/tabwriter"
 
+	"github.com/mattn/go-runewidth"
 	"github.com/nerdneilsfield/simple-feishu-cli/internal/config"
 	"github.com/nerdneilsfield/simple-feishu-cli/internal/feishu"
 	"github.com/spf13/cobra"
@@ -413,16 +413,50 @@ type chatOwnerJSON struct {
 }
 
 func writeChatTable(w io.Writer, chats []feishu.ChatSummary) error {
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	if _, err := fmt.Fprintln(tw, "CHAT_ID	NAME	OWNER_OPEN_ID	OWNER_UNION_ID"); err != nil {
+	headers := []string{"CHAT_ID", "NAME", "OWNER_OPEN_ID", "OWNER_UNION_ID"}
+	rows := make([][]string, 0, len(chats))
+	widths := make([]int, len(headers))
+	for i, header := range headers {
+		widths[i] = runewidth.StringWidth(header)
+	}
+
+	for _, chat := range chats {
+		row := []string{chat.ChatID, chat.Name, chat.Owner.OpenID, chat.Owner.UnionID}
+		rows = append(rows, row)
+		for i, cell := range row {
+			if width := runewidth.StringWidth(cell); width > widths[i] {
+				widths[i] = width
+			}
+		}
+	}
+
+	if _, err := io.WriteString(w, formatChatTableRow(headers, widths)); err != nil {
 		return err
 	}
-	for _, chat := range chats {
-		if _, err := fmt.Fprintf(tw, "%s	%s	%s	%s\n", chat.ChatID, chat.Name, chat.Owner.OpenID, chat.Owner.UnionID); err != nil {
+	for _, row := range rows {
+		if _, err := io.WriteString(w, formatChatTableRow(row, widths)); err != nil {
 			return err
 		}
 	}
-	return tw.Flush()
+	return nil
+}
+
+func formatChatTableRow(cells []string, widths []int) string {
+	var b strings.Builder
+	for i, cell := range cells {
+		b.WriteString(cell)
+		if i == len(cells)-1 {
+			b.WriteByte('\n')
+			break
+		}
+
+		padding := widths[i] - runewidth.StringWidth(cell) + 2
+		if padding < 2 {
+			padding = 2
+		}
+		b.WriteString(strings.Repeat(" ", padding))
+	}
+	return b.String()
 }
 
 func writeChatJSON(w io.Writer, chats []feishu.ChatSummary) error {

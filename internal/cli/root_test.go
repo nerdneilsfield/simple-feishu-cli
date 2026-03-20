@@ -5,10 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/mattn/go-runewidth"
 	"regexp"
 	"strings"
 	"testing"
-	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 
@@ -183,12 +183,12 @@ func TestListChatsTableOutputHandlesChineseNames(t *testing.T) {
 		}
 	}
 
-	headerOpenCol := runeColumn(header, "OWNER_OPEN_ID")
-	headerUnionCol := runeColumn(header, "OWNER_UNION_ID")
-	cnOpenCol := runeColumn(chineseRow, "ou_cn")
-	enOpenCol := runeColumn(englishRow, "ou_en")
-	cnUnionCol := runeColumn(chineseRow, "on_cn")
-	enUnionCol := runeColumn(englishRow, "on_en")
+	headerOpenCol := displayColumn(header, "OWNER_OPEN_ID")
+	headerUnionCol := displayColumn(header, "OWNER_UNION_ID")
+	cnOpenCol := displayColumn(chineseRow, "ou_cn")
+	enOpenCol := displayColumn(englishRow, "ou_en")
+	cnUnionCol := displayColumn(chineseRow, "on_cn")
+	enUnionCol := displayColumn(englishRow, "on_en")
 
 	if cnOpenCol != enOpenCol || cnOpenCol != headerOpenCol {
 		t.Fatalf("OWNER_OPEN_ID column starts differ: header=%d chinese=%d english=%d\n%s", headerOpenCol, cnOpenCol, enOpenCol, stdout.String())
@@ -882,12 +882,12 @@ func TestExitCodeMapsLocalFileErrorsToFour(t *testing.T) {
 	}
 }
 
-func runeColumn(line, token string) int {
+func displayColumn(line, token string) int {
 	idx := strings.Index(line, token)
 	if idx < 0 {
 		return -1
 	}
-	return utf8.RuneCountInString(line[:idx])
+	return runewidth.StringWidth(line[:idx])
 }
 
 type fakeMessenger struct {
