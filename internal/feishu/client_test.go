@@ -55,6 +55,31 @@ func TestListChatsReturnsClientErrorWhenChatListingIsUnconfigured(t *testing.T) 
 	}
 }
 
+func TestListChatsWrapsListAPIErrorsAsAPIError(t *testing.T) {
+	client := &Client{
+		chatListAPI: &fakeChatListService{
+			err: larkcore.CodeError{Code: 99991663, Msg: "insufficient permission"},
+		},
+		chatGetAPI: &fakeChatGetService{},
+	}
+
+	_, err := client.ListChats(context.Background())
+	if err == nil {
+		t.Fatal("ListChats() error = nil, want api error")
+	}
+
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("ListChats() error = %T, want *APIError", err)
+	}
+	if apiErr.Op != "list_chats" {
+		t.Fatalf("ListChats() op = %q, want %q", apiErr.Op, "list_chats")
+	}
+	if apiErr.Code != 99991663 {
+		t.Fatalf("ListChats() code = %d, want %d", apiErr.Code, 99991663)
+	}
+}
+
 func TestListChatsFailsClosedWhenHasMoreWithoutPageToken(t *testing.T) {
 	client := &Client{
 		chatListAPI: &fakeChatListService{
@@ -87,31 +112,126 @@ func TestListChatsFailsClosedWhenHasMoreWithoutPageToken(t *testing.T) {
 	}
 }
 
-func TestGetChatOwnerIDReturnsAPIErrorWhenResponseDataMissing(t *testing.T) {
-	client := &Client{
-		chatGetAPI: &fakeChatGetService{
-			resps: map[string]*larkim.GetChatResp{
-				"oc_first|open_id": {
-					CodeError: larkcore.CodeError{Code: 0},
+func TestListChatsLeavesMissingOwnerFieldsEmpty(t *testing.T) {
+	listAPI := &fakeChatListService{
+		resps: []*larkim.ListChatResp{
+			{
+				CodeError: larkcore.CodeError{Code: 0},
+				Data: &larkim.ListChatRespData{
+					Items: []*larkim.ListChat{
+						larkim.NewListChatBuilder().
+							ChatId("oc_first").
+							Name("Engineering").
+							Build(),
+					},
+					HasMore: larkcore.BoolPtr(false),
 				},
 			},
 		},
 	}
+	getAPI := &fakeChatGetService{
+		resps: map[string]*larkim.GetChatResp{
+			"oc_first|open_id": {
+				CodeError: larkcore.CodeError{Code: 0},
+			},
+			"oc_first|union_id": {
+				CodeError: larkcore.CodeError{Code: 0},
+				Data:      &larkim.GetChatRespData{},
+			},
+		},
+	}
+	client := &Client{chatListAPI: listAPI, chatGetAPI: getAPI}
 
-	_, err := client.getChatOwnerID(context.Background(), "oc_first", larkim.UserIdTypeGetChatOpenId)
+	got, err := client.ListChats(context.Background())
+	if err != nil {
+		t.Fatalf("ListChats() error = %v", err)
+	}
+
+	want := []ChatSummary{
+		{
+			ChatID: "oc_first",
+			Name:   "Engineering",
+			Owner:  ChatOwner{},
+		},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ListChats() = %#v, want %#v", got, want)
+	}
+}
+
+func TestListChatsFailsWhenOpenIDLookupErrors(t *testing.T) {
+	listAPI := &fakeChatListService{
+		resps: []*larkim.ListChatResp{
+			{
+				CodeError: larkcore.CodeError{Code: 0},
+				Data: &larkim.ListChatRespData{
+					Items: []*larkim.ListChat{
+						larkim.NewListChatBuilder().
+							ChatId("oc_first").
+							Name("Engineering").
+							Build(),
+					},
+					HasMore: larkcore.BoolPtr(false),
+				},
+			},
+		},
+	}
+	getAPI := &fakeChatGetService{
+		err: errors.New("open_id lookup failed"),
+	}
+	client := &Client{chatListAPI: listAPI, chatGetAPI: getAPI}
+
+	_, err := client.ListChats(context.Background())
 	if err == nil {
-		t.Fatal("getChatOwnerID() error = nil, want api error")
+		t.Fatal("ListChats() error = nil, want api error")
 	}
 
 	var apiErr *APIError
 	if !errors.As(err, &apiErr) {
-		t.Fatalf("getChatOwnerID() error = %T, want *APIError", err)
+		t.Fatalf("ListChats() error = %T, want *APIError", err)
 	}
 	if apiErr.Op != "get_chat" {
-		t.Fatalf("getChatOwnerID() op = %q, want %q", apiErr.Op, "get_chat")
+		t.Fatalf("ListChats() op = %q, want %q", apiErr.Op, "get_chat")
 	}
-	if apiErr.Message != "missing response data" {
-		t.Fatalf("getChatOwnerID() message = %q, want %q", apiErr.Message, "missing response data")
+	if len(getAPI.calls) != 1 {
+		t.Fatalf("get chat request count = %d, want %d", len(getAPI.calls), 1)
+	}
+}
+
+func TestListChatsFailsWhenUnionIDLookupErrors(t *testing.T) {
+	listAPI := &fakeChatListService{
+		resps: []*larkim.ListChatResp{
+			{
+				CodeError: larkcore.CodeError{Code: 0},
+				Data: &larkim.ListChatRespData{
+					Items: []*larkim.ListChat{
+						larkim.NewListChatBuilder().
+							ChatId("oc_first").
+							Name("Engineering").
+							Build(),
+					},
+					HasMore: larkcore.BoolPtr(false),
+				},
+			},
+		},
+	}
+	getAPI := &unionIDFailService{}
+	client := &Client{chatListAPI: listAPI, chatGetAPI: getAPI}
+
+	_, err := client.ListChats(context.Background())
+	if err == nil {
+		t.Fatal("ListChats() error = nil, want api error")
+	}
+
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("ListChats() error = %T, want *APIError", err)
+	}
+	if apiErr.Op != "get_chat" {
+		t.Fatalf("ListChats() op = %q, want %q", apiErr.Op, "get_chat")
+	}
+	if len(getAPI.calls) != 2 {
+		t.Fatalf("get chat request count = %d, want %d", len(getAPI.calls), 2)
 	}
 }
 
@@ -610,6 +730,22 @@ func TestSendFileWrapsUnsuccessfulUploadResponses(t *testing.T) {
 	if apiErr.Code != 99991663 {
 		t.Fatalf("SendFile() error code = %d, want %d", apiErr.Code, 99991663)
 	}
+}
+
+type unionIDFailService struct {
+	calls []string
+}
+
+func (f *unionIDFailService) Get(_ context.Context, input getChatInput) (*larkim.GetChatResp, error) {
+	key := input.ChatID + "|" + input.UserIDType
+	f.calls = append(f.calls, key)
+	if input.UserIDType == larkim.UserIdTypeGetChatOpenId {
+		return &larkim.GetChatResp{
+			CodeError: larkcore.CodeError{Code: 0},
+			Data:      &larkim.GetChatRespData{OwnerId: larkcore.StringPtr("ou_first")},
+		}, nil
+	}
+	return nil, errors.New("union_id lookup failed")
 }
 
 type fakeMessageService struct {
