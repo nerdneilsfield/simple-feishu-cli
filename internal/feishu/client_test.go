@@ -237,6 +237,22 @@ func TestSendFileUploadsFileAndSendsMessage(t *testing.T) {
 	}
 }
 
+func TestUploadFileTypeFallsBackToStreamForUnsupportedExtensions(t *testing.T) {
+	testCases := map[string]string{
+		"notes.txt":   larkim.FileTypeStream,
+		"report.docx": larkim.FileTypeStream,
+		"archive":     larkim.FileTypeStream,
+		"slides.PPT":  larkim.FileTypePpt,
+		"report.PDF":  larkim.FileTypePdf,
+	}
+
+	for fileName, want := range testCases {
+		if got := uploadFileType(fileName); got != want {
+			t.Fatalf("uploadFileType(%q) = %q, want %q", fileName, got, want)
+		}
+	}
+}
+
 func TestSendFileReturnsLocalFileErrorForNonexistentPath(t *testing.T) {
 	missingPath := filepath.Join(t.TempDir(), "missing.pdf")
 	fileAPI := &fakeFileService{}

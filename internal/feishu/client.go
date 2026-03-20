@@ -194,10 +194,7 @@ func (c *Client) SendFile(ctx context.Context, input FileMessageInput) (MessageR
 	}
 
 	fileName := filepath.Base(input.FilePath)
-	fileType := strings.TrimPrefix(strings.ToLower(filepath.Ext(fileName)), ".")
-	if fileType == "" {
-		fileType = "stream"
-	}
+	fileType := uploadFileType(fileName)
 
 	uploadBody, err := larkim.NewCreateFilePathReqBodyBuilder().
 		FileType(fileType).
@@ -255,6 +252,22 @@ func (c *Client) SendFile(ctx context.Context, input FileMessageInput) (MessageR
 		ReceiveID:     input.ReceiveID,
 		ReceiveIDType: input.ReceiveIDType,
 	}, nil
+}
+
+func uploadFileType(fileName string) string {
+	extension := strings.TrimPrefix(strings.ToLower(filepath.Ext(fileName)), ".")
+
+	switch extension {
+	case larkim.FileTypeOpus,
+		larkim.FileTypeMp4,
+		larkim.FileTypePdf,
+		larkim.FileTypeDoc,
+		larkim.FileTypeXls,
+		larkim.FileTypePpt:
+		return extension
+	default:
+		return larkim.FileTypeStream
+	}
 }
 
 func wrapError(op string, err error) error {
