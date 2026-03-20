@@ -87,6 +87,70 @@ func TestSendTextCommandOutputsStableFields(t *testing.T) {
 	}
 }
 
+func TestSendTextCommandRejectsMissingToType(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{})
+	cmd.SetArgs([]string{"send", "text", "--to", "ou_xxx", "--text", "hello"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want parameter error")
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
+	}
+	if !strings.Contains(err.Error(), "--to-type") {
+		t.Fatalf("error = %q, want --to-type requirement", err)
+	}
+}
+
+func TestSendTextCommandRejectsInvalidToType(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{})
+	cmd.SetArgs([]string{"send", "text", "--to-type", "email", "--to", "ou_xxx", "--text", "hello"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want parameter error")
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
+	}
+	if !strings.Contains(err.Error(), "invalid --to-type") {
+		t.Fatalf("error = %q, want invalid --to-type message", err)
+	}
+}
+
+func TestSendTextCommandRejectsMissingTo(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{})
+	cmd.SetArgs([]string{"send", "text", "--to-type", "open_id", "--text", "hello"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want parameter error")
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
+	}
+	if !strings.Contains(err.Error(), "--to") {
+		t.Fatalf("error = %q, want --to requirement", err)
+	}
+}
+
+func TestSendTextCommandRejectsMissingText(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{})
+	cmd.SetArgs([]string{"send", "text", "--to-type", "open_id", "--to", "ou_xxx"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want parameter error")
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
+	}
+	if !strings.Contains(err.Error(), "--text") {
+		t.Fatalf("error = %q, want --text requirement", err)
+	}
+}
+
 func TestExitCodeMapsConfigErrorsToThree(t *testing.T) {
 	cmd := NewRootCmdWithDeps(Deps{
 		LoadConfig: func(config.LoadOptions) (config.Config, error) {

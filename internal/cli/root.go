@@ -109,6 +109,9 @@ func newSendTextCmd(deps Deps, f *flags) *cobra.Command {
 			if toType == "" || toID == "" || text == "" {
 				return &cliError{code: 2, err: errors.New("--to-type, --to, and --text are required")}
 			}
+			if !isAllowedReceiveIDType(toType) {
+				return &cliError{code: 2, err: fmt.Errorf("invalid --to-type %q; allowed values: open_id, user_id, union_id, chat_id", toType)}
+			}
 
 			cfg, err := deps.LoadConfig(config.LoadOptions{
 				AppID:      f.appID,
@@ -189,6 +192,15 @@ func newSendFileCmd(deps Deps, f *flags) *cobra.Command {
 	cmd.Flags().StringVar(&path, "path", "", "Local file path")
 
 	return cmd
+}
+
+func isAllowedReceiveIDType(value string) bool {
+	switch value {
+	case "open_id", "user_id", "union_id", "chat_id":
+		return true
+	default:
+		return false
+	}
 }
 
 func newMessenger(cfg config.Config) (feishu.Messenger, error) {
