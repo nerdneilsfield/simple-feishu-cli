@@ -237,6 +237,45 @@ func TestSendFileUploadsFileAndSendsMessage(t *testing.T) {
 	}
 }
 
+func TestSendFileReturnsLocalFileErrorForNonexistentPath(t *testing.T) {
+	missingPath := filepath.Join(t.TempDir(), "missing.pdf")
+	fileAPI := &fakeFileService{}
+	messageAPI := &fakeMessageService{}
+	client := &Client{
+		fileAPI:    fileAPI,
+		messageAPI: messageAPI,
+	}
+
+	_, err := client.SendFile(context.Background(), FileMessageInput{
+		ReceiveIDType: larkim.ReceiveIdTypeOpenId,
+		ReceiveID:     "ou_xxx",
+		FilePath:      missingPath,
+	})
+	if err == nil {
+		t.Fatal("SendFile() error = nil, want local file error")
+	}
+
+	var fileErr *LocalFileError
+	if !errors.As(err, &fileErr) {
+		t.Fatalf("SendFile() error = %T, want *LocalFileError", err)
+	}
+	if fileErr.Op != "stat_file" {
+		t.Fatalf("SendFile() op = %q, want %q", fileErr.Op, "stat_file")
+	}
+	if fileErr.Path != missingPath {
+		t.Fatalf("SendFile() path = %q, want %q", fileErr.Path, missingPath)
+	}
+	if !os.IsNotExist(fileErr.Err) {
+		t.Fatalf("SendFile() wrapped err = %v, want not-exist error", fileErr.Err)
+	}
+	if fileAPI.req != nil {
+		t.Fatal("SendFile() attempted upload for nonexistent path")
+	}
+	if messageAPI.req != nil {
+		t.Fatal("SendFile() attempted message send for nonexistent path")
+	}
+}
+
 func TestSendFileReturnsAPIErrorWhenPostUploadSendFails(t *testing.T) {
 	path := writeTempFile(t, "report.pdf", "hello")
 	client := &Client{
