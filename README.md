@@ -313,13 +313,21 @@ chmod 600 ~/.config/feishu/config.yaml
 
 ## 开发
 
-本地基线校验入口：
+本地基线校验入口默认是 `make`，它会运行完整检查；`make check` 等价。
 
 ```bash
+make
 make check
 ```
 
-单独运行某一项：
+如果环境里没有 `make`，可以直接运行原生命令：
+
+```bash
+go test ./...
+go vet ./...
+```
+
+如果只想单独运行某一项：
 
 ```bash
 make test
