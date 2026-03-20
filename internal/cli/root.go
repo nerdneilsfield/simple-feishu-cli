@@ -81,8 +81,32 @@ func ExitCode(err error) int {
 	if errors.As(err, &coded) {
 		return coded.code
 	}
+	if isCobraInputError(err) {
+		return 2
+	}
 
 	return 1
+}
+
+func isCobraInputError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := strings.TrimSpace(err.Error())
+	switch {
+	case strings.HasPrefix(msg, "unknown flag:"),
+		strings.HasPrefix(msg, "unknown shorthand flag:"),
+		strings.HasPrefix(msg, "unknown command "),
+		strings.HasPrefix(msg, "accepts "),
+		strings.HasPrefix(msg, "requires at least "),
+		strings.HasPrefix(msg, "requires at most "),
+		strings.HasPrefix(msg, "accepts between "),
+		strings.HasPrefix(msg, "required flag(s) "):
+		return true
+	default:
+		return false
+	}
 }
 
 func newSendCmd(deps Deps, f *flags) *cobra.Command {

@@ -37,6 +37,36 @@ func TestRunPrintsErrorAndReturnsMappedExitCode(t *testing.T) {
 	}
 }
 
+func TestRunMapsUnknownFlagToExitCodeTwo(t *testing.T) {
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"--bogus"})
+
+	var stderr bytes.Buffer
+	code := run(&stderr, cmd)
+
+	if code != 2 {
+		t.Fatalf("run() code = %d, want %d", code, 2)
+	}
+	if !strings.Contains(stderr.String(), "unknown flag") {
+		t.Fatalf("stderr = %q, want unknown-flag error", stderr.String())
+	}
+}
+
+func TestRunMapsUnknownCommandToExitCodeTwo(t *testing.T) {
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"bogus"})
+
+	var stderr bytes.Buffer
+	code := run(&stderr, cmd)
+
+	if code != 2 {
+		t.Fatalf("run() code = %d, want %d", code, 2)
+	}
+	if !strings.Contains(stderr.String(), "unknown command") {
+		t.Fatalf("stderr = %q, want unknown-command error", stderr.String())
+	}
+}
+
 func TestRunReturnsZeroWithoutWritingError(t *testing.T) {
 	cmd := &cobra.Command{
 		Use:           "feishu",
