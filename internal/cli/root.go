@@ -67,6 +67,7 @@ func NewRootCmdWithDeps(deps Deps) *cobra.Command {
 	cmd.PersistentFlags().StringVar(&f.appID, "app-id", "", "Feishu app ID")
 	cmd.PersistentFlags().StringVar(&f.appSecret, "app-secret", "", "Feishu app secret")
 	cmd.PersistentFlags().StringVar(&f.configPath, "config", "", "Path to config file")
+	cmd.SetHelpCommand(newHelpCmd(cmd))
 	cmd.AddCommand(newSendCmd(deps, f))
 
 	return cmd
@@ -98,6 +99,7 @@ func isCobraInputError(err error) bool {
 	case strings.HasPrefix(msg, "unknown flag:"),
 		strings.HasPrefix(msg, "unknown shorthand flag:"),
 		strings.HasPrefix(msg, "unknown command "),
+		strings.HasPrefix(msg, "unknown help topic "),
 		strings.HasPrefix(msg, "accepts "),
 		strings.HasPrefix(msg, "requires at least "),
 		strings.HasPrefix(msg, "requires at most "),
@@ -109,10 +111,33 @@ func isCobraInputError(err error) bool {
 	}
 }
 
+func newHelpCmd(root *cobra.Command) *cobra.Command {
+	return &cobra.Command{
+		Use:   "help [command ...]",
+		Short: "Help about any command",
+		Args:  cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return root.Help()
+			}
+
+			target, _, err := root.Find(args)
+			if err != nil {
+				return &cliError{code: 2, err: fmt.Errorf("unknown help topic %q", strings.Join(args, " "))}
+			}
+			return target.Help()
+		},
+	}
+}
+
 func newSendCmd(deps Deps, f *flags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "send",
 		Short: "Send messages or files",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return cmd.Help()
+		},
 	}
 
 	cmd.AddCommand(
@@ -129,6 +154,7 @@ func newSendTextCmd(deps Deps, f *flags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "text",
 		Short: "Send a text message",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if toType == "" {
 				return &cliError{code: 2, err: errors.New("--to-type is required")}
@@ -172,7 +198,9 @@ func newSendTextCmd(deps Deps, f *flags) *cobra.Command {
 				return classifyRunError(err)
 			}
 
-			writeResult(cmd.OutOrStdout(), result)
+			if err := writeResult(cmd.OutOrStdout(), result); err != nil {
+				return fmt.Errorf("write result: %w", err)
+			}
 			return nil
 		},
 	}
@@ -190,6 +218,7 @@ func newSendFileCmd(deps Deps, f *flags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "file",
 		Short: "Upload and send a file",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if toType == "" {
 				return &cliError{code: 2, err: errors.New("--to-type is required")}
@@ -233,7 +262,9 @@ func newSendFileCmd(deps Deps, f *flags) *cobra.Command {
 				return classifyRunError(err)
 			}
 
-			writeResult(cmd.OutOrStdout(), result)
+			if err := writeResult(cmd.OutOrStdout(), result); err != nil {
+				return fmt.Errorf("write result: %w", err)
+			}
 			return nil
 		},
 	}
@@ -264,6 +295,11 @@ func classifyRunError(err error) error {
 		return &cliError{code: 4, err: err}
 	}
 
+	var clientErr *feishu.ClientError
+	if errors.As(err, &clientErr) {
+		return &cliError{code: 3, err: err}
+	}
+
 	var apiErr *feishu.APIError
 	if errors.As(err, &apiErr) {
 		return &cliError{code: 10, err: err}
@@ -272,9 +308,18 @@ func classifyRunError(err error) error {
 	return &cliError{code: 10, err: err}
 }
 
-func writeResult(w io.Writer, result feishu.MessageResult) {
-	fmt.Fprintf(w, "message_id=%s\n", result.MessageID)
-	fmt.Fprintf(w, "msg_type=%s\n", result.MsgType)
-	fmt.Fprintf(w, "receive_id=%s\n", result.ReceiveID)
-	fmt.Fprintf(w, "receive_id_type=%s\n", result.ReceiveIDType)
+func writeResult(w io.Writer, result feishu.MessageResult) error {
+	if _, err := fmt.Fprintf(w, "message_id=%s\n", result.MessageID); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "msg_type=%s\n", result.MsgType); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "receive_id=%s\n", result.ReceiveID); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "receive_id_type=%s\n", result.ReceiveIDType); err != nil {
+		return err
+	}
+	return nil
 }

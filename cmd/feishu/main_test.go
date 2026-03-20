@@ -67,6 +67,36 @@ func TestRunMapsUnknownCommandToExitCodeTwo(t *testing.T) {
 	}
 }
 
+func TestRunMapsMalformedNestedCommandPathToExitCodeTwo(t *testing.T) {
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"send", "bogus"})
+
+	var stderr bytes.Buffer
+	code := run(&stderr, cmd)
+
+	if code != 2 {
+		t.Fatalf("run() code = %d, want %d", code, 2)
+	}
+	if !strings.Contains(stderr.String(), "unknown command") {
+		t.Fatalf("stderr = %q, want unknown-command error", stderr.String())
+	}
+}
+
+func TestRunMapsUnknownHelpTopicToExitCodeTwo(t *testing.T) {
+	cmd := cli.NewRootCmd()
+	cmd.SetArgs([]string{"help", "bogus"})
+
+	var stderr bytes.Buffer
+	code := run(&stderr, cmd)
+
+	if code != 2 {
+		t.Fatalf("run() code = %d, want %d", code, 2)
+	}
+	if !strings.Contains(stderr.String(), "unknown help topic") {
+		t.Fatalf("stderr = %q, want unknown-help-topic error", stderr.String())
+	}
+}
+
 func TestRunReturnsZeroWithoutWritingError(t *testing.T) {
 	cmd := &cobra.Command{
 		Use:           "feishu",

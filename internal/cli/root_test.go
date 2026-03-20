@@ -183,6 +183,56 @@ func TestSendTextCommandRejectsBlankText(t *testing.T) {
 	}
 }
 
+func TestSendTextCommandRejectsExtraArgs(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{
+		LoadConfig: func(config.LoadOptions) (config.Config, error) {
+			t.Fatal("LoadConfig should not be called for extra args")
+			return config.Config{}, nil
+		},
+	})
+	cmd.SetArgs([]string{"send", "text", "--to-type", "open_id", "--to", "ou_xxx", "--text", "hello", "extra"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want parameter error")
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
+	}
+	if !strings.Contains(err.Error(), "unknown command") && !strings.Contains(err.Error(), "accepts 0 arg") {
+		t.Fatalf("error = %q, want extra-arg input error", err)
+	}
+}
+
+func TestSendTextCommandReturnsErrorWhenOutputWriteFails(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{
+		LoadConfig: func(opts config.LoadOptions) (config.Config, error) {
+			return config.Config{AppID: "flag-id", AppSecret: "flag-secret"}, nil
+		},
+		NewMessenger: func(cfg config.Config) (feishu.Messenger, error) {
+			return fakeMessenger{
+				sendText: func(context.Context, feishu.TextMessageInput) (feishu.MessageResult, error) {
+					return feishu.MessageResult{MessageID: "om_xxx", MsgType: "text", ReceiveID: "ou_xxx", ReceiveIDType: "open_id"}, nil
+				},
+			}, nil
+		},
+	})
+	cmd.SetOut(failingWriter{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"--app-id", "flag-id", "--app-secret", "flag-secret", "send", "text", "--to-type", "open_id", "--to", "ou_xxx", "--text", "hello"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want write error")
+	}
+	if got := ExitCode(err); got != 1 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 1)
+	}
+	if !strings.Contains(err.Error(), "write result") {
+		t.Fatalf("error = %q, want write-result error", err)
+	}
+}
+
 func TestSendTextCommandUsesCommandContext(t *testing.T) {
 	type contextKey string
 	const key contextKey = "trace"
@@ -272,6 +322,56 @@ func TestSendFileCommandOutputsStableFields(t *testing.T) {
 	}
 	if strings.Contains(stdout.String(), "file_key") {
 		t.Fatalf("stdout = %q, must not include file_key", stdout.String())
+	}
+}
+
+func TestSendFileCommandRejectsExtraArgs(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{
+		LoadConfig: func(config.LoadOptions) (config.Config, error) {
+			t.Fatal("LoadConfig should not be called for extra args")
+			return config.Config{}, nil
+		},
+	})
+	cmd.SetArgs([]string{"send", "file", "--to-type", "chat_id", "--to", "oc_xxx", "--path", "./report.pdf", "extra"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want parameter error")
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
+	}
+	if !strings.Contains(err.Error(), "unknown command") && !strings.Contains(err.Error(), "accepts 0 arg") {
+		t.Fatalf("error = %q, want extra-arg input error", err)
+	}
+}
+
+func TestSendFileCommandReturnsErrorWhenOutputWriteFails(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{
+		LoadConfig: func(opts config.LoadOptions) (config.Config, error) {
+			return config.Config{AppID: "flag-id", AppSecret: "flag-secret"}, nil
+		},
+		NewMessenger: func(cfg config.Config) (feishu.Messenger, error) {
+			return fakeMessenger{
+				sendFile: func(context.Context, feishu.FileMessageInput) (feishu.MessageResult, error) {
+					return feishu.MessageResult{MessageID: "om_file", MsgType: "file", ReceiveID: "oc_xxx", ReceiveIDType: "chat_id"}, nil
+				},
+			}, nil
+		},
+	})
+	cmd.SetOut(failingWriter{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"--app-id", "flag-id", "--app-secret", "flag-secret", "send", "file", "--to-type", "chat_id", "--to", "oc_xxx", "--path", "./report.pdf"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want write error")
+	}
+	if got := ExitCode(err); got != 1 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 1)
+	}
+	if !strings.Contains(err.Error(), "write result") {
+		t.Fatalf("error = %q, want write-result error", err)
 	}
 }
 
@@ -393,6 +493,13 @@ func TestExitCodeMapsConfigErrorsToThree(t *testing.T) {
 	}
 }
 
+func TestExitCodeMapsClientErrorsToThree(t *testing.T) {
+	err := classifyRunError(&feishu.ClientError{Op: "send_text", Message: "message api is not configured"})
+	if got := ExitCode(err); got != 3 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 3)
+	}
+}
+
 func TestExitCodeMapsLocalFileErrorsToFour(t *testing.T) {
 	cmd := NewRootCmdWithDeps(Deps{
 		LoadConfig: func(config.LoadOptions) (config.Config, error) {
@@ -429,4 +536,10 @@ func (f fakeMessenger) SendText(ctx context.Context, input feishu.TextMessageInp
 
 func (f fakeMessenger) SendFile(ctx context.Context, input feishu.FileMessageInput) (feishu.MessageResult, error) {
 	return f.sendFile(ctx, input)
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write(p []byte) (int, error) {
+	return 0, errors.New("write failed")
 }
