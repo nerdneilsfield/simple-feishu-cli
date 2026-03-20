@@ -56,6 +56,66 @@ func TestListChatsReturnsClientErrorWhenChatListingIsUnconfigured(t *testing.T) 
 	}
 }
 
+func TestListChatsFailsClosedWhenHasMoreWithoutPageToken(t *testing.T) {
+	client := &Client{
+		chatListAPI: &fakeChatListService{
+			resps: []*larkim.ListChatResp{
+				{
+					CodeError: larkcore.CodeError{Code: 0},
+					Data: &larkim.ListChatRespData{
+						HasMore: larkcore.BoolPtr(true),
+					},
+				},
+			},
+		},
+		chatGetAPI: &fakeChatGetService{resps: map[string]*larkim.GetChatResp{}},
+	}
+
+	_, err := client.ListChats(context.Background())
+	if err == nil {
+		t.Fatal("ListChats() error = nil, want api error")
+	}
+
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("ListChats() error = %T, want *APIError", err)
+	}
+	if apiErr.Op != "list_chats" {
+		t.Fatalf("ListChats() op = %q, want %q", apiErr.Op, "list_chats")
+	}
+	if !strings.Contains(apiErr.Message, "page_token") {
+		t.Fatalf("ListChats() message = %q, want page_token guidance", apiErr.Message)
+	}
+}
+
+func TestGetChatOwnerIDReturnsAPIErrorWhenResponseDataMissing(t *testing.T) {
+	client := &Client{
+		chatGetAPI: &fakeChatGetService{
+			resps: map[string]*larkim.GetChatResp{
+				"oc_first|open_id": {
+					CodeError: larkcore.CodeError{Code: 0},
+				},
+			},
+		},
+	}
+
+	_, err := client.getChatOwnerID(context.Background(), "oc_first", larkim.UserIdTypeGetChatOpenId)
+	if err == nil {
+		t.Fatal("getChatOwnerID() error = nil, want api error")
+	}
+
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("getChatOwnerID() error = %T, want *APIError", err)
+	}
+	if apiErr.Op != "get_chat" {
+		t.Fatalf("getChatOwnerID() op = %q, want %q", apiErr.Op, "get_chat")
+	}
+	if apiErr.Message != "missing response data" {
+		t.Fatalf("getChatOwnerID() message = %q, want %q", apiErr.Message, "missing response data")
+	}
+}
+
 func TestListChatsAggregatesOwnerIDsAcrossPages(t *testing.T) {
 	listAPI := &fakeChatListService{
 		resps: []*larkim.ListChatResp{
@@ -129,16 +189,16 @@ func TestListChatsAggregatesOwnerIDsAcrossPages(t *testing.T) {
 		t.Fatalf("ListChats() = %#v, want %#v", got, want)
 	}
 
-	if len(listAPI.reqs) != 2 {
-		t.Fatalf("list request count = %d, want %d", len(listAPI.reqs), 2)
+	if len(listAPI.calls) != 2 {
+		t.Fatalf("list request count = %d, want %d", len(listAPI.calls), 2)
 	}
-	if got := queryParamValue(listAPI.reqs[0], "user_id_type"); got != larkim.UserIdTypeListChatOpenId {
+	if got := listAPI.calls[0].UserIDType; got != larkim.UserIdTypeListChatOpenId {
 		t.Fatalf("first list user_id_type = %q, want %q", got, larkim.UserIdTypeListChatOpenId)
 	}
-	if got := queryParamValue(listAPI.reqs[0], "page_token"); got != "" {
+	if got := listAPI.calls[0].PageToken; got != "" {
 		t.Fatalf("first list page_token = %q, want empty", got)
 	}
-	if got := queryParamValue(listAPI.reqs[1], "page_token"); got != "page-2" {
+	if got := listAPI.calls[1].PageToken; got != "page-2" {
 		t.Fatalf("second list page_token = %q, want %q", got, "page-2")
 	}
 
@@ -574,14 +634,22 @@ type fakeMessageService struct {
 	err  error
 }
 
+type fakeChatListCall struct {
+	UserIDType string
+	PageToken  string
+}
+
 type fakeChatListService struct {
-	reqs  []*larkim.ListChatReq
+	calls []fakeChatListCall
 	resps []*larkim.ListChatResp
 	err   error
 }
 
 func (f *fakeChatListService) List(_ context.Context, req *larkim.ListChatReq, _ ...larkcore.RequestOptionFunc) (*larkim.ListChatResp, error) {
-	f.reqs = append(f.reqs, req)
+	f.calls = append(f.calls, fakeChatListCall{
+		UserIDType: queryParamValue(req, "user_id_type"),
+		PageToken:  queryParamValue(req, "page_token"),
+	})
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -594,14 +662,12 @@ func (f *fakeChatListService) List(_ context.Context, req *larkim.ListChatReq, _
 }
 
 type fakeChatGetService struct {
-	reqs  []*larkim.GetChatReq
 	resps map[string]*larkim.GetChatResp
 	err   error
 	calls []string
 }
 
 func (f *fakeChatGetService) Get(_ context.Context, req *larkim.GetChatReq, _ ...larkcore.RequestOptionFunc) (*larkim.GetChatResp, error) {
-	f.reqs = append(f.reqs, req)
 	chatID := pathParamValue(req, "chat_id")
 	userIDType := queryParamValue(req, "user_id_type")
 	key := chatID + "|" + userIDType

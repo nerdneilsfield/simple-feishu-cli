@@ -229,6 +229,9 @@ func (c *Client) ListChats(ctx context.Context) ([]ChatSummary, error) {
 			break
 		}
 		pageToken = larkcore.StringValue(resp.Data.PageToken)
+		if pageToken == "" {
+			return nil, &APIError{Op: "list_chats", Message: "missing page_token for paginated response"}
+		}
 	}
 
 	return results, nil
@@ -248,7 +251,7 @@ func (c *Client) getChatOwnerID(ctx context.Context, chatID, userIDType string) 
 		return "", wrapError("get_chat", resp.CodeError)
 	}
 	if resp.Data == nil {
-		return "", nil
+		return "", &APIError{Op: "get_chat", Message: "missing response data"}
 	}
 
 	return larkcore.StringValue(resp.Data.OwnerId), nil
