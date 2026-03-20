@@ -52,6 +52,12 @@ type APIError struct {
 	Err     error
 }
 
+type ClientError struct {
+	Op      string
+	Message string
+	Err     error
+}
+
 type LocalFileError struct {
 	Op   string
 	Path string
@@ -85,6 +91,23 @@ func (e *APIError) Unwrap() error {
 	return e.Err
 }
 
+func (e *ClientError) Error() string {
+	if e == nil {
+		return "<nil>"
+	}
+	if e.Err != nil {
+		return fmt.Sprintf("%s: %s: %v", e.Op, e.Message, e.Err)
+	}
+	return fmt.Sprintf("%s: %s", e.Op, e.Message)
+}
+
+func (e *ClientError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
 func (e *LocalFileError) Error() string {
 	if e == nil {
 		return "<nil>"
@@ -101,7 +124,7 @@ func (e *LocalFileError) Unwrap() error {
 
 func NewClient(cfg config.Config) (*Client, error) {
 	if strings.TrimSpace(cfg.AppID) == "" || strings.TrimSpace(cfg.AppSecret) == "" {
-		return nil, fmt.Errorf("missing app credentials")
+		return nil, &ClientError{Op: "new_client", Message: "missing app credentials"}
 	}
 
 	sdk := lark.NewClient(cfg.AppID, cfg.AppSecret)
@@ -115,12 +138,12 @@ func NewClient(cfg config.Config) (*Client, error) {
 
 func (c *Client) SendText(ctx context.Context, input TextMessageInput) (MessageResult, error) {
 	if c == nil || c.messageAPI == nil {
-		return MessageResult{}, errors.New("message api is not configured")
+		return MessageResult{}, &ClientError{Op: "send_text", Message: "message api is not configured"}
 	}
 
 	content, err := json.Marshal(map[string]string{"text": input.Text})
 	if err != nil {
-		return MessageResult{}, fmt.Errorf("marshal text content: %w", err)
+		return MessageResult{}, &ClientError{Op: "send_text", Message: "marshal text content", Err: err}
 	}
 
 	body := larkim.NewCreateMessageReqBodyBuilder().
@@ -156,7 +179,10 @@ func (c *Client) SendText(ctx context.Context, input TextMessageInput) (MessageR
 
 func (c *Client) SendFile(ctx context.Context, input FileMessageInput) (MessageResult, error) {
 	if c == nil || c.fileAPI == nil {
-		return MessageResult{}, errors.New("file api is not configured")
+		return MessageResult{}, &ClientError{Op: "send_file", Message: "file api is not configured"}
+	}
+	if c.messageAPI == nil {
+		return MessageResult{}, &ClientError{Op: "send_file", Message: "message api is not configured"}
 	}
 
 	info, err := os.Stat(input.FilePath)
@@ -198,10 +224,7 @@ func (c *Client) SendFile(ctx context.Context, input FileMessageInput) (MessageR
 
 	content, err := json.Marshal(map[string]string{"file_key": larkcore.StringValue(uploadResp.Data.FileKey)})
 	if err != nil {
-		return MessageResult{}, fmt.Errorf("marshal file content: %w", err)
-	}
-	if c.messageAPI == nil {
-		return MessageResult{}, errors.New("message api is not configured")
+		return MessageResult{}, &ClientError{Op: "send_file", Message: "marshal file content", Err: err}
 	}
 
 	body := larkim.NewCreateMessageReqBodyBuilder().
