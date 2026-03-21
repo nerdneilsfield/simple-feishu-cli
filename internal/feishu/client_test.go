@@ -586,6 +586,88 @@ func TestSendPostReturnsStructuredClientErrorWhenMessageAPIUnavailable(t *testin
 	}
 }
 
+func TestSendPostWrapsSDKErrors(t *testing.T) {
+	client := &Client{
+		messageAPI: &fakeMessageService{
+			err: larkcore.CodeError{Code: 99991663, Msg: "insufficient permission"},
+		},
+	}
+
+	_, err := client.SendPost(context.Background(), PostMessageInput{
+		ReceiveIDType: larkim.ReceiveIdTypeChatId,
+		ReceiveID:     "oc_xxx",
+		Post:          json.RawMessage(`{"zh_cn":{"title":"Notice","content":[]}}`),
+	})
+	if err == nil {
+		t.Fatal("SendPost() error = nil, want wrapped api error")
+	}
+
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("SendPost() error = %T, want *APIError", err)
+	}
+	if apiErr.Code != 99991663 {
+		t.Fatalf("SendPost() error code = %d, want %d", apiErr.Code, 99991663)
+	}
+}
+
+func TestSendPostWrapsUnsuccessfulResponses(t *testing.T) {
+	client := &Client{
+		messageAPI: &fakeMessageService{
+			resp: &larkim.CreateMessageResp{
+				CodeError: larkcore.CodeError{Code: 99991663, Msg: "insufficient permission"},
+			},
+		},
+	}
+
+	_, err := client.SendPost(context.Background(), PostMessageInput{
+		ReceiveIDType: larkim.ReceiveIdTypeChatId,
+		ReceiveID:     "oc_xxx",
+		Post:          json.RawMessage(`{"zh_cn":{"title":"Notice","content":[]}}`),
+	})
+	if err == nil {
+		t.Fatal("SendPost() error = nil, want wrapped api error")
+	}
+
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("SendPost() error = %T, want *APIError", err)
+	}
+	if apiErr.Code != 99991663 {
+		t.Fatalf("SendPost() error code = %d, want %d", apiErr.Code, 99991663)
+	}
+}
+
+func TestSendPostReturnsAPIErrorWhenResponseDataMissing(t *testing.T) {
+	client := &Client{
+		messageAPI: &fakeMessageService{
+			resp: &larkim.CreateMessageResp{
+				CodeError: larkcore.CodeError{Code: 0},
+			},
+		},
+	}
+
+	_, err := client.SendPost(context.Background(), PostMessageInput{
+		ReceiveIDType: larkim.ReceiveIdTypeChatId,
+		ReceiveID:     "oc_xxx",
+		Post:          json.RawMessage(`{"zh_cn":{"title":"Notice","content":[]}}`),
+	})
+	if err == nil {
+		t.Fatal("SendPost() error = nil, want api error")
+	}
+
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("SendPost() error = %T, want *APIError", err)
+	}
+	if apiErr.Op != "send_post" {
+		t.Fatalf("SendPost() op = %q, want %q", apiErr.Op, "send_post")
+	}
+	if apiErr.Message != "missing response data" {
+		t.Fatalf("SendPost() message = %q, want %q", apiErr.Message, "missing response data")
+	}
+}
+
 func TestSendFileUploadsFileAndSendsMessage(t *testing.T) {
 	path := writeTempFile(t, "report.pdf", "hello")
 	fileAPI := &fakeFileService{
