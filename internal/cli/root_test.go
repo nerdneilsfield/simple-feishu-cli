@@ -787,6 +787,140 @@ func TestSendMDCommandRejectsUnsupportedMarkdown(t *testing.T) {
 	}
 }
 
+func TestSendMDCommandRejectsInvalidToType(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{})
+	cmd.SetArgs([]string{"send", "md", "--to-type", "email", "--to", "oc_xxx", "--file", "/tmp/notice.md"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want parameter error")
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
+	}
+	if !strings.Contains(err.Error(), "invalid --to-type") {
+		t.Fatalf("error = %q, want invalid --to-type message", err)
+	}
+}
+
+func TestSendMDCommandRejectsBlankTo(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{})
+	cmd.SetArgs([]string{"send", "md", "--to-type", "chat_id", "--to", "   ", "--file", "/tmp/notice.md"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want parameter error")
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
+	}
+	if err.Error() != "--to must not be blank" {
+		t.Fatalf("error = %q, want %q", err, "--to must not be blank")
+	}
+}
+
+func TestSendMDCommandRejectsBlankFile(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{})
+	cmd.SetArgs([]string{"send", "md", "--to-type", "chat_id", "--to", "oc_xxx", "--file", "   "})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want parameter error")
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
+	}
+	if err.Error() != "--file must not be blank" {
+		t.Fatalf("error = %q, want %q", err, "--file must not be blank")
+	}
+}
+
+func TestSendMDCommandReturnsLocalFileErrorForMissingFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing.md")
+	cmd := NewRootCmdWithDeps(Deps{
+		LoadConfig: func(config.LoadOptions) (config.Config, error) {
+			t.Fatal("LoadConfig should not be called for missing markdown file")
+			return config.Config{}, nil
+		},
+		NewPostSender: func(config.Config) (feishu.PostSender, error) {
+			t.Fatal("NewPostSender should not be called for missing markdown file")
+			return nil, nil
+		},
+	})
+	cmd.SetArgs([]string{"send", "md", "--to-type", "chat_id", "--to", "oc_xxx", "--file", path})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want local file error")
+	}
+	if got := ExitCode(err); got != 4 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 4)
+	}
+	if !strings.Contains(err.Error(), "read_file") {
+		t.Fatalf("error = %q, want read_file error", err)
+	}
+}
+
+func TestSendMDCommandReturnsErrorWhenOutputWriteFails(t *testing.T) {
+	path := writeTempCLIFile(t, "notice.md", "# Notice\n\nHello world.\n")
+	cmd := NewRootCmdWithDeps(Deps{
+		LoadConfig: func(opts config.LoadOptions) (config.Config, error) {
+			return config.Config{AppID: "flag-id", AppSecret: "flag-secret"}, nil
+		},
+		NewPostSender: func(cfg config.Config) (feishu.PostSender, error) {
+			return fakePostSender{
+				sendPost: func(context.Context, feishu.PostMessageInput) (feishu.MessageResult, error) {
+					return feishu.MessageResult{MessageID: "om_md", MsgType: "post", ReceiveID: "oc_xxx", ReceiveIDType: "chat_id"}, nil
+				},
+			}, nil
+		},
+	})
+	cmd.SetOut(failingWriter{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"--app-id", "flag-id", "--app-secret", "flag-secret", "send", "md", "--to-type", "chat_id", "--to", "oc_xxx", "--file", path})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want write error")
+	}
+	if got := ExitCode(err); got != 3 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 3)
+	}
+	if !strings.Contains(err.Error(), "write result") {
+		t.Fatalf("error = %q, want write-result error", err)
+	}
+}
+
+func TestSendMDCommandUsesCommandContext(t *testing.T) {
+	type contextKey string
+	const key contextKey = "trace"
+
+	path := writeTempCLIFile(t, "notice.md", "# Notice\n\nHello world.\n")
+	wantCtx := context.WithValue(context.Background(), key, "ctx-value")
+	cmd := NewRootCmdWithDeps(Deps{
+		LoadConfig: func(opts config.LoadOptions) (config.Config, error) {
+			return config.Config{AppID: "flag-id", AppSecret: "flag-secret"}, nil
+		},
+		NewPostSender: func(cfg config.Config) (feishu.PostSender, error) {
+			return fakePostSender{
+				sendPost: func(ctx context.Context, input feishu.PostMessageInput) (feishu.MessageResult, error) {
+					if got := ctx.Value(key); got != "ctx-value" {
+						t.Fatalf("context value = %#v, want %q", got, "ctx-value")
+					}
+					return feishu.MessageResult{MessageID: "om_md", MsgType: "post", ReceiveID: input.ReceiveID, ReceiveIDType: input.ReceiveIDType}, nil
+				},
+			}, nil
+		},
+	})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"--app-id", "flag-id", "--app-secret", "flag-secret", "send", "md", "--to-type", "chat_id", "--to", "oc_xxx", "--file", path})
+
+	if err := cmd.ExecuteContext(wantCtx); err != nil {
+		t.Fatalf("ExecuteContext() error = %v", err)
+	}
+}
+
 func TestSendTextCommandOutputsStableFields(t *testing.T) {
 	cmd := NewRootCmdWithDeps(Deps{
 		LoadConfig: func(opts config.LoadOptions) (config.Config, error) {
