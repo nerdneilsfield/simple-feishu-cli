@@ -6,12 +6,14 @@
 [![Release](https://github.com/nerdneilsfield/simple-feishu-cli/actions/workflows/release.yaml/badge.svg)](https://github.com/nerdneilsfield/simple-feishu-cli/actions/workflows/release.yaml)
 [![Go Version](https://img.shields.io/badge/go-1.24.0-00ADD8?logo=go)](go.mod)
 
-`feishu` is a small CLI for self-built Feishu apps. It sends text messages to users or chats, and uploads a local file before sending it as a file message.
+`feishu` is a small CLI for self-built Feishu apps. It sends plain-text, post, and Markdown-converted rich-text messages to users or chats, uploads a local file before sending it as a file message, and lists joined chats.
 
 Current scope:
 
 - `./feishu send text`
 - `./feishu send file`
+- `./feishu send post`
+- `./feishu send md`
 - `./feishu list chats`
 - credential precedence: CLI flags > environment variables > config file
 - stable success fields for message sends: `message_id`, `msg_type`, `receive_id`, `receive_id_type`
@@ -20,7 +22,7 @@ Current scope:
 Out of scope for now:
 
 - user/chat lookup
-- rich text, cards, images, or other message types
+- cards, images, or other message types beyond `text`, `file`, and `post`
 - multi-profile or multi-tenant config
 - local token caching
 
@@ -60,13 +62,31 @@ Upload and send a file:
   --path ./report.pdf
 ```
 
-Successful output for `send text` and `send file` is:
+Send a Feishu `post` payload from local JSON:
+
+```bash
+./feishu send post \
+  --to-type chat_id \
+  --to oc_xxx \
+  --file ./notice.post.json
+```
+
+Convert Markdown and send it as Feishu `post`:
+
+```bash
+./feishu send md \
+  --to-type chat_id \
+  --to oc_xxx \
+  --file ./notice.md
+```
+
+Successful output for all send commands keeps the same field names. `msg_type` matches the command, for example `text`, `file`, or `post`:
 
 ```text
 message_id=om_xxx
-msg_type=text
-receive_id=ou_xxx
-receive_id_type=open_id
+msg_type=post
+receive_id=oc_xxx
+receive_id_type=chat_id
 ```
 
 <details>
@@ -149,6 +169,7 @@ Additional notes:
 - both message sending and file upload require bot capability
 - uploaded files must not be empty
 - the documented size limit for uploaded files is 30 MB
+- `send post` and `send md` use the same message-send permissions as `send text`
 
 </details>
 
@@ -206,6 +227,57 @@ CI/CD with explicit flags:
 ```
 
 If the binary is installed into `PATH`, drop the `./` prefix.
+
+<details>
+<summary>Rich text commands</summary>
+
+`send text` stays plain text. It does not parse Markdown and does not emit Feishu `post`.
+
+Use `send post` when you already have Feishu `post` JSON:
+
+```bash
+./feishu send post \
+  --to-type chat_id \
+  --to oc_xxx \
+  --file ./notice.post.json
+```
+
+The JSON file must be a top-level object. The CLI sends it as `msg_type=post`.
+
+Use `send md` when you want the CLI to convert Markdown into Feishu `post`:
+
+```bash
+./feishu send md \
+  --to-type chat_id \
+  --to oc_xxx \
+  --file ./notice.md
+```
+
+Supported Markdown subset today:
+
+- the first `# H1` becomes `zh_cn.title`
+- paragraphs
+- `**bold**`, `*italic*`, `~~strike~~`
+- links with plain-text labels and autolinks
+- inline code
+- fenced and indented code blocks
+- blockquotes
+- ordered and unordered lists
+
+Unsupported Markdown today:
+
+- images
+- tables
+- raw HTML
+- task lists
+- nested block structures such as quote-in-list or list-in-quote
+- nested inline styles such as `***bold italic***`
+- styled link labels such as `[**bold**](https://example.com)`
+- headings other than the first level-1 heading
+
+Unsupported Markdown fails fast with exit code `2`. Local file read failures still use exit code `4`.
+
+</details>
 
 <details>
 <summary>Output contract, exit codes, and troubleshooting</summary>

@@ -6,12 +6,14 @@
 [![Release](https://github.com/nerdneilsfield/simple-feishu-cli/actions/workflows/release.yaml/badge.svg)](https://github.com/nerdneilsfield/simple-feishu-cli/actions/workflows/release.yaml)
 [![Go Version](https://img.shields.io/badge/go-1.24.0-00ADD8?logo=go)](go.mod)
 
-`feishu` 是一个面向企业自建应用的极简飞书 CLI，用来给飞书用户或群组发送文本消息，或者先上传本地文件再发送文件消息。
+`feishu` 是一个面向企业自建应用的极简飞书 CLI，用来给飞书用户或群组发送纯文本消息、Feishu post 富文本消息、Markdown 转换后的富文本消息，或者先上传本地文件再发送文件消息，并支持列出机器人已加入的群。
 
 当前范围：
 
 - `./feishu send text`
 - `./feishu send file`
+- `./feishu send post`
+- `./feishu send md`
 - `./feishu list chats`
 - 凭证优先级：命令行参数 > 环境变量 > 配置文件
 - 发送消息命令的成功输出字段固定：`message_id`、`msg_type`、`receive_id`、`receive_id_type`
@@ -20,7 +22,7 @@
 当前不做：
 
 - 查人 / 查群
-- 富文本、卡片、图片等其他消息类型
+- 除 `text`、`file`、`post` 之外的其他消息类型，例如卡片和图片
 - 多 profile / 多租户配置
 - token 本地缓存
 
@@ -60,13 +62,31 @@ export FEISHU_APP_SECRET='secret_xxx'
   --path ./report.pdf
 ```
 
-`send text` 和 `send file` 的成功输出固定为：
+直接发送本地 Feishu `post` JSON：
+
+```bash
+./feishu send post \
+  --to-type chat_id \
+  --to oc_xxx \
+  --file ./notice.post.json
+```
+
+把 Markdown 转成 Feishu `post` 后发送：
+
+```bash
+./feishu send md \
+  --to-type chat_id \
+  --to oc_xxx \
+  --file ./notice.md
+```
+
+所有发送命令的成功输出字段名都固定不变，`msg_type` 会随着命令变化，例如 `text`、`file` 或 `post`：
 
 ```text
 message_id=om_xxx
-msg_type=text
-receive_id=ou_xxx
-receive_id_type=open_id
+msg_type=post
+receive_id=oc_xxx
+receive_id_type=chat_id
 ```
 
 <details>
@@ -149,6 +169,7 @@ chmod 600 ~/.config/feishu/config.yaml
 - 发送消息和上传文件都要求应用开启机器人能力
 - 上传文件不能是空文件
 - 官方文档给出的上传大小限制是 30 MB
+- `send post` 和 `send md` 使用的仍然是同一套发消息权限
 
 </details>
 
@@ -206,6 +227,57 @@ CI/CD 场景下用显式参数：
 ```
 
 如果你把二进制安装进了 `PATH`，把 `./feishu` 换成 `feishu` 即可。
+
+<details>
+<summary>富文本命令说明</summary>
+
+`send text` 仍然只发纯文本，不会解析 Markdown，也不会生成 Feishu `post`。
+
+如果你已经有 Feishu `post` JSON，就用 `send post`：
+
+```bash
+./feishu send post \
+  --to-type chat_id \
+  --to oc_xxx \
+  --file ./notice.post.json
+```
+
+这个 JSON 文件必须是顶层对象，CLI 会按 `msg_type=post` 直接发送。
+
+如果你想让 CLI 负责把 Markdown 转成 Feishu `post`，就用 `send md`：
+
+```bash
+./feishu send md \
+  --to-type chat_id \
+  --to oc_xxx \
+  --file ./notice.md
+```
+
+当前支持的 Markdown 子集：
+
+- 第一个 `# H1` 会变成 `zh_cn.title`
+- 普通段落
+- `**粗体**`、`*斜体*`、`~~删除线~~`
+- 纯文本标签链接和自动链接
+- 行内代码
+- 围栏代码块和缩进代码块
+- 引用块
+- 有序列表和无序列表
+
+当前不支持：
+
+- 图片
+- 表格
+- 原始 HTML
+- task list
+- 引用里套列表、列表里套引用这类嵌套块结构
+- `***bold italic***` 这类嵌套行内样式
+- `[**bold**](https://example.com)` 这类带样式的链接文本
+- 除第一个一级标题之外的其他标题
+
+遇到不支持的 Markdown，CLI 会直接失败并返回退出码 `2`。本地文件读取失败仍然返回退出码 `4`。
+
+</details>
 
 <details>
 <summary>输出契约、退出码与排障</summary>
