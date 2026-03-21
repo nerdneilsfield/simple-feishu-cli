@@ -28,6 +28,22 @@
 
 ## 快速开始
 
+用 `go install` 安装：
+
+```bash
+go install github.com/nerdneilsfield/simple-feishu-cli/cmd/feishu@latest
+feishu --help
+```
+
+安装指定版本：
+
+```bash
+go install github.com/nerdneilsfield/simple-feishu-cli/cmd/feishu@v0.0.3
+```
+
+如果设置了 `GOBIN`，二进制会安装到 `GOBIN`；否则会安装到 `$(go env GOPATH)/bin`。
+
+
 要求 Go `1.24.0` 或兼容的 `1.24.x` 版本。
 
 从源码构建：
@@ -306,10 +322,10 @@ CI/CD 场景下用显式参数：
 <details>
 <summary>在 CI/CD 中从 GitHub Releases 安装</summary>
 
-下面的示例固定使用你即将发布的 `0.0.2` 版本。Linux 的 GitHub Hosted Runner 和 GitLab Linux Runner 都可以直接下载这个包：
+下面的示例固定使用你即将发布的 `0.0.3` 版本。Linux 的 GitHub Hosted Runner 和 GitLab Linux Runner 都可以直接下载这个包：
 
 ```text
-https://github.com/nerdneilsfield/simple-feishu-cli/releases/download/v0.0.2/feishu_0.0.2_linux_amd64.tar.gz
+https://github.com/nerdneilsfield/simple-feishu-cli/releases/download/v0.0.3/feishu_0.0.3_linux_amd64.tar.gz
 ```
 
 GitHub Actions 示例：
@@ -326,7 +342,7 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     env:
-      FEISHU_VERSION: 0.0.2
+      FEISHU_VERSION: 0.0.3
       FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
       FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
       FEISHU_OPEN_ID: ${{ secrets.FEISHU_OPEN_ID }}
@@ -382,7 +398,7 @@ stages:
   - notify
 
 variables:
-  FEISHU_VERSION: "0.0.2"
+  FEISHU_VERSION: "0.0.3"
 
 default:
   image: alpine:3.20

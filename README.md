@@ -28,6 +28,22 @@ Out of scope for now:
 
 ## Quickstart
 
+Install with `go install`:
+
+```bash
+go install github.com/nerdneilsfield/simple-feishu-cli/cmd/feishu@latest
+feishu --help
+```
+
+Install a specific release:
+
+```bash
+go install github.com/nerdneilsfield/simple-feishu-cli/cmd/feishu@v0.0.3
+```
+
+The binary is installed into `GOBIN` when set, otherwise `$(go env GOPATH)/bin`.
+
+
 Requires Go `1.24.0` or a compatible `1.24.x` release.
 
 Build from source:
@@ -306,10 +322,10 @@ If the binary is installed into `PATH`, replace `./dist/feishu` with `feishu`.
 <details>
 <summary>Install from GitHub Releases in CI/CD</summary>
 
-These examples pin the release to `0.0.2`, which is the version you said you are about to publish. The Linux GitHub-hosted and GitLab Linux runners use this asset:
+These examples pin the release to `0.0.3`, which is the version you said you are about to publish. The Linux GitHub-hosted and GitLab Linux runners use this asset:
 
 ```text
-https://github.com/nerdneilsfield/simple-feishu-cli/releases/download/v0.0.2/feishu_0.0.2_linux_amd64.tar.gz
+https://github.com/nerdneilsfield/simple-feishu-cli/releases/download/v0.0.3/feishu_0.0.3_linux_amd64.tar.gz
 ```
 
 GitHub Actions example:
@@ -326,7 +342,7 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     env:
-      FEISHU_VERSION: 0.0.2
+      FEISHU_VERSION: 0.0.3
       FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
       FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
       FEISHU_OPEN_ID: ${{ secrets.FEISHU_OPEN_ID }}
@@ -382,7 +398,7 @@ stages:
   - notify
 
 variables:
-  FEISHU_VERSION: "0.0.2"
+  FEISHU_VERSION: "0.0.3"
 
 default:
   image: alpine:3.20
