@@ -1,6 +1,8 @@
 # Local build outputs
 /dist/
 /feishu
+!/feishu/
+!/feishu/*.go
 /feishu.exe
 
 # Local config files
