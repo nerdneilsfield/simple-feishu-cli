@@ -2,6 +2,7 @@ package feishu
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -372,6 +373,7 @@ func TestNormalizeAppCredentialsTrimsWhitespace(t *testing.T) {
 
 func TestNewClientWiresSendDependencies(t *testing.T) {
 	var _ Messenger = (*Client)(nil)
+	var _ PostSender = (*Client)(nil)
 	var _ ChatLister = (*Client)(nil)
 
 	client, err := NewClient(config.Config{
@@ -527,6 +529,60 @@ func TestSendTextReturnsStructuredClientErrorWhenMessageAPIUnavailable(t *testin
 	var clientErr *ClientError
 	if !errors.As(err, &clientErr) {
 		t.Fatalf("SendText() error = %T, want *ClientError", err)
+	}
+}
+
+func TestSendPostBuildsRequestAndReturnsMessageResult(t *testing.T) {
+	fake := &fakeMessageService{
+		resp: &larkim.CreateMessageResp{
+			CodeError: larkcore.CodeError{Code: 0},
+			Data: &larkim.CreateMessageRespData{
+				MessageId: larkcore.StringPtr("om_post"),
+				MsgType:   larkcore.StringPtr("post"),
+			},
+		},
+	}
+	client := &Client{messageAPI: fake}
+
+	result, err := client.SendPost(context.Background(), PostMessageInput{
+		ReceiveIDType: larkim.ReceiveIdTypeChatId,
+		ReceiveID:     "oc_xxx",
+		Post:          json.RawMessage(`{"zh_cn":{"title":"Notice","content":[[{"tag":"text","text":"hello"}]]}}`),
+	})
+	if err != nil {
+		t.Fatalf("SendPost() error = %v", err)
+	}
+
+	if result.MessageID != "om_post" || result.MsgType != "post" {
+		t.Fatalf("SendPost() result = %#v", result)
+	}
+	if got := fake.input.ReceiveIDType; got != larkim.ReceiveIdTypeChatId {
+		t.Fatalf("receive_id_type = %q, want %q", got, larkim.ReceiveIdTypeChatId)
+	}
+	if got := fake.input.ReceiveID; got != "oc_xxx" {
+		t.Fatalf("request receive_id = %q, want %q", got, "oc_xxx")
+	}
+	if got := fake.input.MsgType; got != "post" {
+		t.Fatalf("request msg_type = %q, want %q", got, "post")
+	}
+	if got := fake.input.Content; got != `{"zh_cn":{"title":"Notice","content":[[{"tag":"text","text":"hello"}]]}}` {
+		t.Fatalf("request content = %q, want raw post payload", got)
+	}
+}
+
+func TestSendPostReturnsStructuredClientErrorWhenMessageAPIUnavailable(t *testing.T) {
+	_, err := (&Client{}).SendPost(context.Background(), PostMessageInput{
+		ReceiveIDType: larkim.ReceiveIdTypeOpenId,
+		ReceiveID:     "ou_xxx",
+		Post:          json.RawMessage(`{"zh_cn":{"title":"Notice","content":[]}}`),
+	})
+	if err == nil {
+		t.Fatal("SendPost() error = nil, want client error")
+	}
+
+	var clientErr *ClientError
+	if !errors.As(err, &clientErr) {
+		t.Fatalf("SendPost() error = %T, want *ClientError", err)
 	}
 }
 

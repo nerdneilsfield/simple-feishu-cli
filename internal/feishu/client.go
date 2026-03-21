@@ -34,6 +34,12 @@ type FileMessageInput struct {
 	FilePath      string
 }
 
+type PostMessageInput struct {
+	ReceiveIDType string
+	ReceiveID     string
+	Post          json.RawMessage
+}
+
 type ChatOwner struct {
 	OpenID  string
 	UnionID string
@@ -48,6 +54,10 @@ type ChatSummary struct {
 type Messenger interface {
 	SendText(ctx context.Context, input TextMessageInput) (MessageResult, error)
 	SendFile(ctx context.Context, input FileMessageInput) (MessageResult, error)
+}
+
+type PostSender interface {
+	SendPost(ctx context.Context, input PostMessageInput) (MessageResult, error)
 }
 
 type ChatLister interface {
@@ -373,6 +383,35 @@ func (c *Client) SendText(ctx context.Context, input TextMessageInput) (MessageR
 	}
 	if resp.Data == nil {
 		return MessageResult{}, &APIError{Op: "send_text", Message: "missing response data"}
+	}
+
+	return MessageResult{
+		MessageID:     larkcore.StringValue(resp.Data.MessageId),
+		MsgType:       larkcore.StringValue(resp.Data.MsgType),
+		ReceiveID:     input.ReceiveID,
+		ReceiveIDType: input.ReceiveIDType,
+	}, nil
+}
+
+func (c *Client) SendPost(ctx context.Context, input PostMessageInput) (MessageResult, error) {
+	if c == nil || c.messageAPI == nil {
+		return MessageResult{}, &ClientError{Op: "send_post", Message: "message api is not configured"}
+	}
+
+	resp, err := c.messageAPI.Create(ctx, createMessageInput{
+		ReceiveIDType: input.ReceiveIDType,
+		ReceiveID:     input.ReceiveID,
+		MsgType:       "post",
+		Content:       string(input.Post),
+	})
+	if err != nil {
+		return MessageResult{}, wrapError("send_post", err)
+	}
+	if !resp.Success() {
+		return MessageResult{}, wrapError("send_post", resp.CodeError)
+	}
+	if resp.Data == nil {
+		return MessageResult{}, &APIError{Op: "send_post", Message: "missing response data"}
 	}
 
 	return MessageResult{
