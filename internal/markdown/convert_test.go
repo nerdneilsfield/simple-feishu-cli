@@ -128,6 +128,16 @@ func TestConvertToFeishuPostRejectsNestedInlineStyling(t *testing.T) {
 	}
 }
 
+func TestConvertToFeishuPostRejectsStyledLinkLabel(t *testing.T) {
+	got, err := ConvertToFeishuPost([]byte("[**bold**](https://example.com)\n"))
+	if err == nil {
+		t.Fatalf("ConvertToFeishuPost() = %s, want unsupported styled link label error", string(got))
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "unsupported") {
+		t.Fatalf("ConvertToFeishuPost() error = %v, want unsupported styled link label message", err)
+	}
+}
+
 func TestConvertToFeishuPostProducesValidJSON(t *testing.T) {
 	got, err := ConvertToFeishuPost([]byte("# Hello\n\nParagraph.\n"))
 	if err != nil {

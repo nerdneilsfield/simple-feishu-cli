@@ -184,6 +184,9 @@ func (c *converter) convertInline(node gast.Node, style string) ([]postNode, err
 		}
 		return c.convertInlineChildren(n.FirstChild(), "lineThrough")
 	case *gast.Link:
+		if !isPlainTextLinkLabel(n.FirstChild()) {
+			return nil, unsupportedNodeError(node)
+		}
 		label, err := c.renderPlainText(n.FirstChild())
 		if err != nil {
 			return nil, err
@@ -451,6 +454,18 @@ func containsNestedInlineStyle(node gast.Node) bool {
 		}
 	}
 	return false
+}
+
+func isPlainTextLinkLabel(node gast.Node) bool {
+	for cur := node; cur != nil; cur = cur.NextSibling() {
+		switch cur.(type) {
+		case *gast.Text, *gast.String:
+			continue
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func marshalPostEnvelope(envelope postEnvelope) ([]byte, error) {
