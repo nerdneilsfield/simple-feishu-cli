@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nerdneilsfield/simple-feishu-cli/config"
+	"github.com/nerdneilsfield/simple-feishu-cli/feishu"
 	"github.com/nerdneilsfield/simple-feishu-cli/internal/cli"
-	"github.com/nerdneilsfield/simple-feishu-cli/internal/config"
-	"github.com/nerdneilsfield/simple-feishu-cli/internal/feishu"
 	"github.com/spf13/cobra"
 )
 

@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/mattn/go-runewidth"
-	"github.com/nerdneilsfield/simple-feishu-cli/internal/config"
-	"github.com/nerdneilsfield/simple-feishu-cli/internal/feishu"
+	"github.com/nerdneilsfield/simple-feishu-cli/config"
+	"github.com/nerdneilsfield/simple-feishu-cli/feishu"
 	"github.com/nerdneilsfield/simple-feishu-cli/internal/markdown"
 	"github.com/spf13/cobra"
 )
