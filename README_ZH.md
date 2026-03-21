@@ -68,7 +68,7 @@ export FEISHU_APP_SECRET='secret_xxx'
 ./feishu send post \
   --to-type chat_id \
   --to oc_xxx \
-  --file ./notice.post.json
+  --file ./examples/post-basic.json
 ```
 
 把 Markdown 转成 Feishu `post` 后发送：
@@ -77,7 +77,7 @@ export FEISHU_APP_SECRET='secret_xxx'
 ./feishu send md \
   --to-type chat_id \
   --to oc_xxx \
-  --file ./notice.md
+  --file ./examples/post-from-markdown.md
 ```
 
 所有发送命令的成功输出字段名都固定不变，`msg_type` 会随着命令变化，例如 `text`、`file` 或 `post`：
@@ -239,10 +239,10 @@ CI/CD 场景下用显式参数：
 ./feishu send post \
   --to-type chat_id \
   --to oc_xxx \
-  --file ./notice.post.json
+  --file ./examples/post-basic.json
 ```
 
-这个 JSON 文件必须是顶层对象，CLI 会按 `msg_type=post` 直接发送。
+这个 JSON 文件必须是顶层对象，CLI 会按 `msg_type=post` 直接发送。先用 `examples/post-basic.json` 验证链路，再用 `examples/post-rich.json` 看更丰富的原生 `post` 结构。
 
 如果你想让 CLI 负责把 Markdown 转成 Feishu `post`，就用 `send md`：
 
@@ -250,7 +250,7 @@ CI/CD 场景下用显式参数：
 ./feishu send md \
   --to-type chat_id \
   --to oc_xxx \
-  --file ./notice.md
+  --file ./examples/post-from-markdown.md
 ```
 
 当前支持的 Markdown 子集：
@@ -276,6 +276,12 @@ CI/CD 场景下用显式参数：
 - 除第一个一级标题之外的其他标题
 
 遇到不支持的 Markdown，CLI 会直接失败并返回退出码 `2`。本地文件读取失败仍然返回退出码 `4`。
+
+仓库内可直接参考的示例：
+
+- `examples/post-basic.json`：最小可运行的 `send post` 示例
+- `examples/post-rich.json`：更丰富的 Feishu 原生 `post` 节点组合
+- `examples/post-from-markdown.md`：给 `send md` 使用的 Markdown 输入示例
 
 </details>
 

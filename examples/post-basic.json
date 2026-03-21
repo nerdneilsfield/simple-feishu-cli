@@ -1,0 +1,24 @@
+{
+  "zh_cn": {
+    "title": "Release Notice",
+    "content": [
+      [
+        {
+          "tag": "text",
+          "text": "Deployment finished. "
+        },
+        {
+          "tag": "a",
+          "text": "View build log",
+          "href": "https://example.com/builds/123"
+        }
+      ],
+      [
+        {
+          "tag": "text",
+          "text": "Status: green"
+        }
+      ]
+    ]
+  }
+}

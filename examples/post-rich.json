@@ -1,0 +1,79 @@
+{
+  "zh_cn": {
+    "title": "Rich Post Demo",
+    "content": [
+      [
+        {
+          "tag": "text",
+          "text": "This row mixes plain text, "
+        },
+        {
+          "tag": "text",
+          "text": "bold",
+          "style": [
+            "bold"
+          ]
+        },
+        {
+          "tag": "text",
+          "text": ", "
+        },
+        {
+          "tag": "text",
+          "text": "italic",
+          "style": [
+            "italic"
+          ]
+        },
+        {
+          "tag": "text",
+          "text": ", and "
+        },
+        {
+          "tag": "text",
+          "text": "strikethrough",
+          "style": [
+            "lineThrough"
+          ]
+        },
+        {
+          "tag": "text",
+          "text": "."
+        }
+      ],
+      [
+        {
+          "tag": "a",
+          "text": "Open release dashboard",
+          "href": "https://example.com/releases/2026-03-21",
+          "style": [
+            "bold"
+          ]
+        },
+        {
+          "tag": "text",
+          "text": " for native post JSON examples."
+        }
+      ],
+      [
+        {
+          "tag": "code_block",
+          "language": "GO",
+          "text": "func main() int64 {\n    return 0\n}"
+        }
+      ],
+      [
+        {
+          "tag": "md",
+          "text": "> This block is authored directly as Feishu `md`, not produced by `send md`."
+        }
+      ],
+      [
+        {
+          "tag": "md",
+          "text": "- Native `post` JSON can choose exact row structure\n- You can mix node types without going through Markdown conversion\n- Inline code can be expressed inside `md` content"
+        }
+      ]
+    ]
+  }
+}

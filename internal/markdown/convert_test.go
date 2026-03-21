@@ -24,7 +24,7 @@ func TestConvertToFeishuPostConvertsParagraphAndInlineStyles(t *testing.T) {
 		t.Fatalf("ConvertToFeishuPost() error = %v", err)
 	}
 
-	want := `{"zh_cn":{"title":"","content":[[{"tag":"text","text":"bold","style":"bold"},{"tag":"text","text":"italic","style":"italic"},{"tag":"text","text":"strike","style":"lineThrough"}]]}}`
+	want := `{"zh_cn":{"title":"","content":[[{"tag":"text","text":"bold","style":["bold"]},{"tag":"text","text":"italic","style":["italic"]},{"tag":"text","text":"strike","style":["lineThrough"]}]]}}`
 	if string(got) != want {
 		t.Fatalf("ConvertToFeishuPost() = %s, want %s", string(got), want)
 	}
@@ -49,6 +49,18 @@ func TestConvertToFeishuPostConvertsFencedCodeBlock(t *testing.T) {
 	}
 
 	want := `{"zh_cn":{"title":"Title","content":[[{"tag":"code_block","language":"go","text":"fmt.Println(\"hi\")"}]]}}`
+	if string(got) != want {
+		t.Fatalf("ConvertToFeishuPost() = %s, want %s", string(got), want)
+	}
+}
+
+func TestConvertToFeishuPostOmitsUnsupportedFencedCodeLanguage(t *testing.T) {
+	got, err := ConvertToFeishuPost([]byte("```text\nhello\n```\n"))
+	if err != nil {
+		t.Fatalf("ConvertToFeishuPost() error = %v", err)
+	}
+
+	want := `{"zh_cn":{"title":"","content":[[{"tag":"code_block","text":"hello"}]]}}`
 	if string(got) != want {
 		t.Fatalf("ConvertToFeishuPost() = %s, want %s", string(got), want)
 	}

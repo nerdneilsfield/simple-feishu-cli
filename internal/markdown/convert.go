@@ -25,11 +25,11 @@ type postLocale struct {
 }
 
 type postNode struct {
-	Tag      string `json:"tag"`
-	Language string `json:"language,omitempty"`
-	Text     string `json:"text,omitempty"`
-	Style    string `json:"style,omitempty"`
-	Href     string `json:"href,omitempty"`
+	Tag      string   `json:"tag"`
+	Language string   `json:"language,omitempty"`
+	Text     string   `json:"text,omitempty"`
+	Style    []string `json:"style,omitempty"`
+	Href     string   `json:"href,omitempty"`
 }
 
 // ConvertToFeishuPost converts Markdown into a Feishu post JSON envelope.
@@ -97,7 +97,7 @@ func (c *converter) convertBlock(node gast.Node) ([][]postNode, error) {
 	case *gast.FencedCodeBlock:
 		return [][]postNode{{{
 			Tag:      "code_block",
-			Language: strings.TrimSpace(string(n.Language(c.source))),
+			Language: normalizeCodeBlockLanguage(strings.TrimSpace(string(n.Language(c.source)))),
 			Text:     trimTrailingNewlines(string(n.Text(c.source))),
 		}}}, nil
 	case *gast.CodeBlock:
@@ -162,13 +162,13 @@ func (c *converter) convertInline(node gast.Node, style string) ([]postNode, err
 		if strings.TrimSpace(text) == "" {
 			return nil, nil
 		}
-		return []postNode{{Tag: "text", Text: text, Style: style}}, nil
+		return []postNode{{Tag: "text", Text: text, Style: singleStyle(style)}}, nil
 	case *gast.String:
 		text := string(n.Value)
 		if strings.TrimSpace(text) == "" {
 			return nil, nil
 		}
-		return []postNode{{Tag: "text", Text: text, Style: style}}, nil
+		return []postNode{{Tag: "text", Text: text, Style: singleStyle(style)}}, nil
 	case *gast.Emphasis:
 		if containsNestedInlineStyle(n.FirstChild()) {
 			return nil, unsupportedNodeError(node)
@@ -203,7 +203,7 @@ func (c *converter) convertInline(node gast.Node, style string) ([]postNode, err
 		if label == "" {
 			return nil, nil
 		}
-		return []postNode{{Tag: "text", Text: "`" + label + "`", Style: style}}, nil
+		return []postNode{{Tag: "text", Text: "`" + label + "`", Style: singleStyle(style)}}, nil
 	case *gast.RawHTML, *gast.Image:
 		return nil, unsupportedNodeError(node)
 	case *extast.TaskCheckBox:
@@ -487,7 +487,7 @@ func appendMergedPostNode(out []postNode, item postNode) []postNode {
 	}
 
 	last := &out[len(out)-1]
-	if last.Tag == "text" && item.Tag == "text" && last.Style == item.Style && last.Href == "" && item.Href == "" && last.Language == "" && item.Language == "" {
+	if last.Tag == "text" && item.Tag == "text" && sameStyles(last.Style, item.Style) && last.Href == "" && item.Href == "" && last.Language == "" && item.Language == "" {
 		last.Text += item.Text
 		return out
 	}
@@ -526,4 +526,32 @@ func indentBlock(text, prefix string) string {
 		lines[i] = indent + line
 	}
 	return strings.Join(lines, "\n")
+}
+
+func singleStyle(style string) []string {
+	if style == "" {
+		return nil
+	}
+	return []string{style}
+}
+
+func sameStyles(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func normalizeCodeBlockLanguage(language string) string {
+	switch strings.ToLower(strings.TrimSpace(language)) {
+	case "", "text", "txt", "plaintext", "plain_text", "plain":
+		return ""
+	default:
+		return language
+	}
 }

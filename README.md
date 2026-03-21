@@ -68,7 +68,7 @@ Send a Feishu `post` payload from local JSON:
 ./feishu send post \
   --to-type chat_id \
   --to oc_xxx \
-  --file ./notice.post.json
+  --file ./examples/post-basic.json
 ```
 
 Convert Markdown and send it as Feishu `post`:
@@ -77,7 +77,7 @@ Convert Markdown and send it as Feishu `post`:
 ./feishu send md \
   --to-type chat_id \
   --to oc_xxx \
-  --file ./notice.md
+  --file ./examples/post-from-markdown.md
 ```
 
 Successful output for all send commands keeps the same field names. `msg_type` matches the command, for example `text`, `file`, or `post`:
@@ -239,10 +239,10 @@ Use `send post` when you already have Feishu `post` JSON:
 ./feishu send post \
   --to-type chat_id \
   --to oc_xxx \
-  --file ./notice.post.json
+  --file ./examples/post-basic.json
 ```
 
-The JSON file must be a top-level object. The CLI sends it as `msg_type=post`.
+The JSON file must be a top-level object. The CLI sends it as `msg_type=post`. Start with `examples/post-basic.json`, then try `examples/post-rich.json` for a more expressive native `post` sample.
 
 Use `send md` when you want the CLI to convert Markdown into Feishu `post`:
 
@@ -250,7 +250,7 @@ Use `send md` when you want the CLI to convert Markdown into Feishu `post`:
 ./feishu send md \
   --to-type chat_id \
   --to oc_xxx \
-  --file ./notice.md
+  --file ./examples/post-from-markdown.md
 ```
 
 Supported Markdown subset today:
@@ -276,6 +276,12 @@ Unsupported Markdown today:
 - headings other than the first level-1 heading
 
 Unsupported Markdown fails fast with exit code `2`. Local file read failures still use exit code `4`.
+
+Reference examples in this repo:
+
+- `examples/post-basic.json`: minimal `send post` smoke sample
+- `examples/post-rich.json`: richer native Feishu `post` node combinations
+- `examples/post-from-markdown.md`: `send md` sample input
 
 </details>
 
