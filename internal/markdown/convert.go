@@ -106,14 +106,14 @@ func (c *converter) convertBlock(node gast.Node) ([][]postNode, error) {
 			Text: trimTrailingNewlines(string(n.Text(c.source))),
 		}}}, nil
 	case *gast.Blockquote:
-		block, err := c.renderBlockMarkdown(n)
+		block, err := c.renderContainerMarkdown(n.FirstChild())
 		if err != nil {
 			return nil, err
 		}
 		if block == "" {
 			return nil, nil
 		}
-		return [][]postNode{{{Tag: "md", Text: block}}}, nil
+		return [][]postNode{{{Tag: "md", Text: prefixEachLine(block, "> ")}}}, nil
 	case *gast.List:
 		block, err := c.renderBlockMarkdown(n)
 		if err != nil {
@@ -170,12 +170,18 @@ func (c *converter) convertInline(node gast.Node, style string) ([]postNode, err
 		}
 		return []postNode{{Tag: "text", Text: text, Style: style}}, nil
 	case *gast.Emphasis:
+		if containsNestedInlineStyle(n.FirstChild()) {
+			return nil, unsupportedNodeError(node)
+		}
 		nextStyle := "italic"
 		if n.Level >= 2 {
 			nextStyle = "bold"
 		}
 		return c.convertInlineChildren(n.FirstChild(), nextStyle)
 	case *extast.Strikethrough:
+		if containsNestedInlineStyle(n.FirstChild()) {
+			return nil, unsupportedNodeError(node)
+		}
 		return c.convertInlineChildren(n.FirstChild(), "lineThrough")
 	case *gast.Link:
 		label, err := c.renderPlainText(n.FirstChild())
@@ -272,34 +278,16 @@ func (c *converter) renderBlockMarkdown(node gast.Node) (string, error) {
 	case *gast.String:
 		return c.renderInlineMarkdownNode(n)
 	case *gast.Blockquote:
-		var parts []string
-		for child := n.FirstChild(); child != nil; child = child.NextSibling() {
-			part, err := c.renderBlockMarkdown(child)
-			if err != nil {
-				return "", err
-			}
-			if part != "" {
-				parts = append(parts, part)
-			}
+		block, err := c.renderContainerMarkdown(n.FirstChild())
+		if err != nil {
+			return "", err
 		}
-		if len(parts) == 0 {
+		if block == "" {
 			return "", nil
 		}
-		return prefixEachLine(strings.Join(parts, "\n\n"), "> "), nil
+		return prefixEachLine(block, "> "), nil
 	case *gast.List:
 		return c.renderListMarkdown(n)
-	case *gast.ListItem:
-		var parts []string
-		for child := n.FirstChild(); child != nil; child = child.NextSibling() {
-			part, err := c.renderBlockMarkdown(child)
-			if err != nil {
-				return "", err
-			}
-			if part != "" {
-				parts = append(parts, part)
-			}
-		}
-		return strings.Join(parts, "\n\n"), nil
 	case *gast.TextBlock:
 		return c.renderInlineMarkdown(n.FirstChild())
 	case *gast.FencedCodeBlock:
@@ -354,14 +342,23 @@ func (c *converter) renderListMarkdown(list *gast.List) (string, error) {
 }
 
 func (c *converter) renderListItemMarkdown(item *gast.ListItem) (string, error) {
+	return c.renderContainerMarkdown(item.FirstChild())
+}
+
+func (c *converter) renderContainerMarkdown(node gast.Node) (string, error) {
 	var parts []string
-	for child := item.FirstChild(); child != nil; child = child.NextSibling() {
-		part, err := c.renderBlockMarkdown(child)
-		if err != nil {
-			return "", err
-		}
-		if part != "" {
-			parts = append(parts, part)
+	for child := node; child != nil; child = child.NextSibling() {
+		switch child.(type) {
+		case *gast.Paragraph, *gast.TextBlock, *gast.FencedCodeBlock, *gast.CodeBlock:
+			part, err := c.renderBlockMarkdown(child)
+			if err != nil {
+				return "", err
+			}
+			if part != "" {
+				parts = append(parts, part)
+			}
+		default:
+			return "", unsupportedNodeError(child)
 		}
 	}
 	return strings.Join(parts, "\n\n"), nil
@@ -392,6 +389,9 @@ func (c *converter) renderInlineMarkdownNode(node gast.Node) (string, error) {
 	case *gast.String:
 		return string(n.Value), nil
 	case *gast.Emphasis:
+		if containsNestedInlineStyle(n.FirstChild()) {
+			return "", unsupportedNodeError(node)
+		}
 		inner, err := c.renderInlineMarkdown(n.FirstChild())
 		if err != nil {
 			return "", err
@@ -401,6 +401,9 @@ func (c *converter) renderInlineMarkdownNode(node gast.Node) (string, error) {
 		}
 		return "*" + inner + "*", nil
 	case *extast.Strikethrough:
+		if containsNestedInlineStyle(n.FirstChild()) {
+			return "", unsupportedNodeError(node)
+		}
 		inner, err := c.renderInlineMarkdown(n.FirstChild())
 		if err != nil {
 			return "", err
@@ -434,6 +437,20 @@ func (c *converter) renderInlineMarkdownNode(node gast.Node) (string, error) {
 
 func unsupportedNodeError(node gast.Node) error {
 	return fmt.Errorf("unsupported markdown node: %s", node.Kind())
+}
+
+func containsNestedInlineStyle(node gast.Node) bool {
+	for cur := node; cur != nil; cur = cur.NextSibling() {
+		switch n := cur.(type) {
+		case *gast.Emphasis, *extast.Strikethrough:
+			return true
+		default:
+			if cur.HasChildren() && containsNestedInlineStyle(n.FirstChild()) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func marshalPostEnvelope(envelope postEnvelope) ([]byte, error) {

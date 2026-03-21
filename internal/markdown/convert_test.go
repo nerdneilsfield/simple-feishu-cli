@@ -99,6 +99,35 @@ func TestConvertToFeishuPostRejectsUnsupportedNodes(t *testing.T) {
 	}
 }
 
+func TestConvertToFeishuPostRejectsNestedBlockStructures(t *testing.T) {
+	testCases := map[string]string{
+		"quote-with-list": "> - item\n",
+		"list-with-quote": "- item\n  > quote\n",
+	}
+
+	for name, input := range testCases {
+		t.Run(name, func(t *testing.T) {
+			got, err := ConvertToFeishuPost([]byte(input))
+			if err == nil {
+				t.Fatalf("ConvertToFeishuPost() = %s, want unsupported nested block error", string(got))
+			}
+			if !strings.Contains(strings.ToLower(err.Error()), "unsupported") {
+				t.Fatalf("ConvertToFeishuPost() error = %v, want unsupported nested block message", err)
+			}
+		})
+	}
+}
+
+func TestConvertToFeishuPostRejectsNestedInlineStyling(t *testing.T) {
+	got, err := ConvertToFeishuPost([]byte("***text***\n"))
+	if err == nil {
+		t.Fatalf("ConvertToFeishuPost() = %s, want unsupported nested inline style error", string(got))
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "unsupported") {
+		t.Fatalf("ConvertToFeishuPost() error = %v, want unsupported nested inline style message", err)
+	}
+}
+
 func TestConvertToFeishuPostProducesValidJSON(t *testing.T) {
 	got, err := ConvertToFeishuPost([]byte("# Hello\n\nParagraph.\n"))
 	if err != nil {
