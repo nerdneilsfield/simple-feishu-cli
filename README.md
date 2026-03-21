@@ -200,6 +200,81 @@ The official message API docs also list these `receive_id_type` values.
 
 </details>
 
+## Use as a Go library
+
+The module now exposes public `config` and `feishu` packages, so you can reuse the same behavior from Go without shelling out to the CLI.
+
+Minimal example:
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+
+    "github.com/nerdneilsfield/simple-feishu-cli/config"
+    "github.com/nerdneilsfield/simple-feishu-cli/feishu"
+)
+
+func main() {
+    cfg, err := config.Load(config.LoadOptions{})
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    client, err := feishu.NewClient(cfg)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    result, err := client.SendText(context.Background(), feishu.TextMessageInput{
+        ReceiveIDType: "open_id",
+        ReceiveID:     "ou_xxx",
+        Text:          "hello from Go",
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    log.Printf("sent %s as %s", result.MessageID, result.MsgType)
+}
+```
+
+<details>
+<summary>Other public library entry points</summary>
+
+Use the same `client` value for the rest of the public surface. Assume `ctx := context.Background()` and import `encoding/json` for the post example:
+
+```go
+_, err = client.SendFile(ctx, feishu.FileMessageInput{
+    ReceiveIDType: "chat_id",
+    ReceiveID:     "oc_xxx",
+    FilePath:      "./artifacts/report.pdf",
+})
+
+_, err = client.SendPost(ctx, feishu.PostMessageInput{
+    ReceiveIDType: "chat_id",
+    ReceiveID:     "oc_xxx",
+    Post:          json.RawMessage(`{"zh_cn":{"title":"Notice","content":[[{"tag":"text","text":"hello"}]]}}`),
+})
+
+_, err = client.SendMarkdown(ctx, feishu.MarkdownMessageInput{
+    ReceiveIDType: "chat_id",
+    ReceiveID:     "oc_xxx",
+    Markdown:      []byte("# Notice\n\nhello from markdown\n"),
+})
+
+chats, err := client.ListChats(ctx)
+for _, chat := range chats {
+    log.Printf("%s %s %s %s", chat.ChatID, chat.Name, chat.Owner.OpenID, chat.Owner.UnionID)
+}
+```
+
+The public config loader keeps the same precedence as the CLI: explicit options, then env vars, then the config file. `SendMarkdown` uses the same restricted Markdown subset as the CLI `send md` command and returns an error for unsupported structures.
+
+</details>
+
 ## More examples
 
 List joined chats:

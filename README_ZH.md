@@ -200,6 +200,81 @@ chmod 600 ~/.config/feishu/config.yaml
 
 </details>
 
+## 作为 Go 库使用
+
+这个模块现在暴露了公开的 `config` 和 `feishu` 包，所以你可以在 Go 程序里直接复用同一套行为，而不是通过 shell 调 CLI。
+
+最小示例：
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+
+    "github.com/nerdneilsfield/simple-feishu-cli/config"
+    "github.com/nerdneilsfield/simple-feishu-cli/feishu"
+)
+
+func main() {
+    cfg, err := config.Load(config.LoadOptions{})
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    client, err := feishu.NewClient(cfg)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    result, err := client.SendText(context.Background(), feishu.TextMessageInput{
+        ReceiveIDType: "open_id",
+        ReceiveID:     "ou_xxx",
+        Text:          "hello from Go",
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    log.Printf("sent %s as %s", result.MessageID, result.MsgType)
+}
+```
+
+<details>
+<summary>其它公开库入口</summary>
+
+下面这些能力都复用同一个 `client`。下面默认你已经有 `ctx := context.Background()`，并为 `SendPost` 导入了 `encoding/json`：
+
+```go
+_, err = client.SendFile(ctx, feishu.FileMessageInput{
+    ReceiveIDType: "chat_id",
+    ReceiveID:     "oc_xxx",
+    FilePath:      "./artifacts/report.pdf",
+})
+
+_, err = client.SendPost(ctx, feishu.PostMessageInput{
+    ReceiveIDType: "chat_id",
+    ReceiveID:     "oc_xxx",
+    Post:          json.RawMessage(`{"zh_cn":{"title":"Notice","content":[[{"tag":"text","text":"hello"}]]}}`),
+})
+
+_, err = client.SendMarkdown(ctx, feishu.MarkdownMessageInput{
+    ReceiveIDType: "chat_id",
+    ReceiveID:     "oc_xxx",
+    Markdown:      []byte("# Notice\n\nhello from markdown\n"),
+})
+
+chats, err := client.ListChats(ctx)
+for _, chat := range chats {
+    log.Printf("%s %s %s %s", chat.ChatID, chat.Name, chat.Owner.OpenID, chat.Owner.UnionID)
+}
+```
+
+公开的配置加载器和 CLI 保持同样的优先级：显式 options，其次环境变量，最后配置文件。`SendMarkdown` 和 CLI 的 `send md` 使用同一套受控 Markdown 子集，遇到不支持的结构会直接返回错误。
+
+</details>
+
 ## 更多示例
 
 列出机器人已加入的群：
