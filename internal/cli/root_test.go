@@ -455,6 +455,54 @@ func TestSendPostCommandRejectsMissingFile(t *testing.T) {
 	}
 }
 
+func TestSendPostCommandRejectsInvalidToType(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{})
+	cmd.SetArgs([]string{"send", "post", "--to-type", "email", "--to", "oc_xxx", "--file", "./post.json"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want parameter error")
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
+	}
+	if !strings.Contains(err.Error(), "invalid --to-type") {
+		t.Fatalf("error = %q, want invalid --to-type message", err)
+	}
+}
+
+func TestSendPostCommandRejectsBlankTo(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{})
+	cmd.SetArgs([]string{"send", "post", "--to-type", "chat_id", "--to", "   ", "--file", "./post.json"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want parameter error")
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
+	}
+	if err.Error() != "--to must not be blank" {
+		t.Fatalf("error = %q, want %q", err, "--to must not be blank")
+	}
+}
+
+func TestSendPostCommandRejectsBlankFile(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{})
+	cmd.SetArgs([]string{"send", "post", "--to-type", "chat_id", "--to", "oc_xxx", "--file", "   "})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want parameter error")
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
+	}
+	if err.Error() != "--file must not be blank" {
+		t.Fatalf("error = %q, want %q", err, "--file must not be blank")
+	}
+}
+
 func TestSendPostCommandRejectsMalformedJSON(t *testing.T) {
 	path := writeTempCLIFile(t, "post.json", "not-json")
 	cmd := NewRootCmdWithDeps(Deps{})
@@ -506,8 +554,8 @@ func TestSendPostCommandReturnsLocalFileErrorForMissingFile(t *testing.T) {
 	}
 }
 
-func TestSendPostCommandReturnsLocalFileErrorWhenUnreadable(t *testing.T) {
-	path := writeUnreadableCLIFile(t, "post.json", `{}`)
+func TestSendPostCommandReturnsLocalFileErrorForDirectoryPath(t *testing.T) {
+	path := t.TempDir()
 	cmd := NewRootCmdWithDeps(Deps{})
 	cmd.SetArgs([]string{"send", "post", "--to-type", "chat_id", "--to", "oc_xxx", "--file", path})
 
@@ -520,6 +568,36 @@ func TestSendPostCommandReturnsLocalFileErrorWhenUnreadable(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "read_file") {
 		t.Fatalf("error = %q, want read_file error", err)
+	}
+}
+
+func TestSendPostCommandReturnsErrorWhenOutputWriteFails(t *testing.T) {
+	path := writeTempCLIFile(t, "post.json", `{"zh_cn":{"title":"Alarm","content":[[{"tag":"text","text":"hello"}]]}}`)
+	cmd := NewRootCmdWithDeps(Deps{
+		LoadConfig: func(opts config.LoadOptions) (config.Config, error) {
+			return config.Config{AppID: "flag-id", AppSecret: "flag-secret"}, nil
+		},
+		NewPostSender: func(cfg config.Config) (feishu.PostSender, error) {
+			return fakePostSender{
+				sendPost: func(context.Context, feishu.PostMessageInput) (feishu.MessageResult, error) {
+					return feishu.MessageResult{MessageID: "om_post", MsgType: "post", ReceiveID: "oc_xxx", ReceiveIDType: "chat_id"}, nil
+				},
+			}, nil
+		},
+	})
+	cmd.SetOut(failingWriter{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"--app-id", "flag-id", "--app-secret", "flag-secret", "send", "post", "--to-type", "chat_id", "--to", "oc_xxx", "--file", path})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want write error")
+	}
+	if got := ExitCode(err); got != 3 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 3)
+	}
+	if !strings.Contains(err.Error(), "write result") {
+		t.Fatalf("error = %q, want write-result error", err)
 	}
 }
 
@@ -1120,16 +1198,6 @@ func writeTempCLIFile(t *testing.T, name, content string) string {
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatalf("WriteFile(%q) error = %v", path, err)
 	}
-	return path
-}
-
-func writeUnreadableCLIFile(t *testing.T, name, content string) string {
-	t.Helper()
-	path := writeTempCLIFile(t, name, content)
-	if err := os.Chmod(path, 0o000); err != nil {
-		t.Fatalf("Chmod(%q) error = %v", path, err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(path, 0o600) })
 	return path
 }
 
