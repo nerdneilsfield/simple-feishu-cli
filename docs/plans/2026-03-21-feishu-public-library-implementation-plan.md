@@ -42,6 +42,7 @@ Requirements:
 
 - add `MarkdownMessageInput` to the public `feishu` package
 - add `(*Client).SendMarkdown(ctx, input)`
+- keep existing public seams backward-compatible; expose Markdown sending through a separate `MarkdownSender` seam if needed
 - reuse the existing Markdown conversion logic internally
 - accept Markdown bytes, not file path
 - preserve current post JSON generation behavior

@@ -13,6 +13,7 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 	"github.com/nerdneilsfield/simple-feishu-cli/config"
+	"github.com/nerdneilsfield/simple-feishu-cli/internal/markdown"
 )
 
 type MessageResult struct {
@@ -40,6 +41,12 @@ type PostMessageInput struct {
 	Post          json.RawMessage
 }
 
+type MarkdownMessageInput struct {
+	ReceiveIDType string
+	ReceiveID     string
+	Markdown      []byte
+}
+
 type ChatOwner struct {
 	OpenID  string
 	UnionID string
@@ -58,6 +65,10 @@ type Messenger interface {
 
 type PostSender interface {
 	SendPost(ctx context.Context, input PostMessageInput) (MessageResult, error)
+}
+
+type MarkdownSender interface {
+	SendMarkdown(ctx context.Context, input MarkdownMessageInput) (MessageResult, error)
 }
 
 type ChatLister interface {
@@ -420,6 +431,19 @@ func (c *Client) SendPost(ctx context.Context, input PostMessageInput) (MessageR
 		ReceiveID:     input.ReceiveID,
 		ReceiveIDType: input.ReceiveIDType,
 	}, nil
+}
+
+func (c *Client) SendMarkdown(ctx context.Context, input MarkdownMessageInput) (MessageResult, error) {
+	post, err := markdown.ConvertToFeishuPost(input.Markdown)
+	if err != nil {
+		return MessageResult{}, err
+	}
+
+	return c.SendPost(ctx, PostMessageInput{
+		ReceiveIDType: input.ReceiveIDType,
+		ReceiveID:     input.ReceiveID,
+		Post:          post,
+	})
 }
 
 func (c *Client) SendFile(ctx context.Context, input FileMessageInput) (MessageResult, error) {

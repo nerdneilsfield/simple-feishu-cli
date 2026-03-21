@@ -374,6 +374,7 @@ func TestNormalizeAppCredentialsTrimsWhitespace(t *testing.T) {
 func TestNewClientWiresSendDependencies(t *testing.T) {
 	var _ Messenger = (*Client)(nil)
 	var _ PostSender = (*Client)(nil)
+	var _ MarkdownSender = (*Client)(nil)
 	var _ ChatLister = (*Client)(nil)
 
 	client, err := NewClient(config.Config{
@@ -635,6 +636,79 @@ func TestSendPostWrapsUnsuccessfulResponses(t *testing.T) {
 	}
 	if apiErr.Code != 99991663 {
 		t.Fatalf("SendPost() error code = %d, want %d", apiErr.Code, 99991663)
+	}
+}
+
+func TestSendMarkdownBuildsPostAndReturnsMessageResult(t *testing.T) {
+	fake := &fakeMessageService{
+		resp: &larkim.CreateMessageResp{
+			CodeError: larkcore.CodeError{Code: 0},
+			Data: &larkim.CreateMessageRespData{
+				MessageId: larkcore.StringPtr("om_md"),
+				MsgType:   larkcore.StringPtr("post"),
+			},
+		},
+	}
+	client := &Client{messageAPI: fake}
+
+	result, err := client.SendMarkdown(context.Background(), MarkdownMessageInput{
+		ReceiveIDType: larkim.ReceiveIdTypeChatId,
+		ReceiveID:     "oc_xxx",
+		Markdown:      []byte("# Notice\n\n**hello**\n"),
+	})
+	if err != nil {
+		t.Fatalf("SendMarkdown() error = %v", err)
+	}
+
+	if result.MessageID != "om_md" || result.MsgType != "post" {
+		t.Fatalf("SendMarkdown() result = %#v", result)
+	}
+	if got := fake.input.Content; got != `{"zh_cn":{"title":"Notice","content":[[{"tag":"text","text":"hello","style":["bold"]}]]}}` {
+		t.Fatalf("request content = %q", got)
+	}
+}
+
+func TestSendMarkdownReturnsConversionErrorsDirectly(t *testing.T) {
+	fake := &fakeMessageService{}
+	client := &Client{messageAPI: fake}
+
+	_, err := client.SendMarkdown(context.Background(), MarkdownMessageInput{
+		ReceiveIDType: larkim.ReceiveIdTypeChatId,
+		ReceiveID:     "oc_xxx",
+		Markdown:      []byte("![alt](https://example.com/image.png)\n"),
+	})
+	if err == nil {
+		t.Fatal("SendMarkdown() error = nil, want conversion error")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "unsupported") {
+		t.Fatalf("SendMarkdown() error = %v, want unsupported conversion error", err)
+	}
+	if fake.calls != 0 {
+		t.Fatalf("message create call count = %d, want %d", fake.calls, 0)
+	}
+}
+
+func TestSendMarkdownPreservesSendPathAPIErrors(t *testing.T) {
+	client := &Client{messageAPI: &fakeMessageService{err: larkcore.CodeError{Code: 99991663, Msg: "insufficient permission"}}}
+
+	_, err := client.SendMarkdown(context.Background(), MarkdownMessageInput{
+		ReceiveIDType: larkim.ReceiveIdTypeChatId,
+		ReceiveID:     "oc_xxx",
+		Markdown:      []byte("# Notice\n\nhello\n"),
+	})
+	if err == nil {
+		t.Fatal("SendMarkdown() error = nil, want api error")
+	}
+
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("SendMarkdown() error = %T, want *APIError", err)
+	}
+	if apiErr.Op != "send_post" {
+		t.Fatalf("SendMarkdown() op = %q, want %q", apiErr.Op, "send_post")
+	}
+	if apiErr.Code != 99991663 {
+		t.Fatalf("SendMarkdown() code = %d, want %d", apiErr.Code, 99991663)
 	}
 }
 
@@ -919,6 +993,7 @@ type fakeMessageService struct {
 	input createMessageInput
 	resp  *larkim.CreateMessageResp
 	err   error
+	calls int
 }
 
 type fakeChatListCall struct {
@@ -968,6 +1043,7 @@ func (f *fakeChatGetService) Get(_ context.Context, input getChatInput) (*larkim
 }
 
 func (f *fakeMessageService) Create(_ context.Context, input createMessageInput) (*larkim.CreateMessageResp, error) {
+	f.calls++
 	f.input = input
 	if f.err != nil {
 		return nil, f.err

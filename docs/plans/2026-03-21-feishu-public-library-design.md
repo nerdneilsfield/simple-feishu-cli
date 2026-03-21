@@ -124,7 +124,7 @@ func (c *Client) SendPost(ctx context.Context, input PostMessageInput) (MessageR
 func (c *Client) SendMarkdown(ctx context.Context, input MarkdownMessageInput) (MessageResult, error)
 func (c *Client) ListChats(ctx context.Context) ([]ChatSummary, error)
 
-// The existing narrow capability seams should remain available for testing and composition.
+// The existing narrow capability seams should remain available for testing and composition. New capabilities should avoid widening already-public interfaces when a separate seam keeps compatibility cleaner.
 type Messenger interface {
     SendText(ctx context.Context, input TextMessageInput) (MessageResult, error)
     SendFile(ctx context.Context, input FileMessageInput) (MessageResult, error)
@@ -132,6 +132,9 @@ type Messenger interface {
 
 type PostSender interface {
     SendPost(ctx context.Context, input PostMessageInput) (MessageResult, error)
+}
+
+type MarkdownSender interface {
     SendMarkdown(ctx context.Context, input MarkdownMessageInput) (MessageResult, error)
 }
 
@@ -172,7 +175,7 @@ Minimize risk by moving in place rather than rewriting:
 
 1. create public `config` package by promoting current `internal/config`
 2. create public `feishu` package by promoting current `internal/feishu`
-3. add `SendMarkdown` to the public `feishu.Client`
+3. add `SendMarkdown` to the public `feishu.Client` and expose a dedicated `MarkdownSender` seam
 4. switch CLI imports from `internal/config` and `internal/feishu` to public packages
 5. keep behavior and output contracts unchanged
 6. remove old internal package references only after tests are green
