@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/mattn/go-runewidth"
@@ -16,6 +17,7 @@ import (
 type Deps struct {
 	LoadConfig    func(config.LoadOptions) (config.Config, error)
 	NewMessenger  func(config.Config) (feishu.Messenger, error)
+	NewPostSender func(config.Config) (feishu.PostSender, error)
 	NewChatLister func(config.Config) (feishu.ChatLister, error)
 }
 
@@ -48,6 +50,7 @@ func NewRootCmd() *cobra.Command {
 	return NewRootCmdWithDeps(Deps{
 		LoadConfig:    config.Load,
 		NewMessenger:  newMessenger,
+		NewPostSender: newPostSender,
 		NewChatLister: newChatLister,
 	})
 }
@@ -58,6 +61,9 @@ func NewRootCmdWithDeps(deps Deps) *cobra.Command {
 	}
 	if deps.NewMessenger == nil {
 		deps.NewMessenger = newMessenger
+	}
+	if deps.NewPostSender == nil {
+		deps.NewPostSender = newPostSender
 	}
 	if deps.NewChatLister == nil {
 		deps.NewChatLister = newChatLister
@@ -219,6 +225,7 @@ func newSendCmd(deps Deps, f *flags) *cobra.Command {
 	cmd.AddCommand(
 		newSendTextCmd(deps, f),
 		newSendFileCmd(deps, f),
+		newSendPostCmd(deps, f),
 	)
 
 	return cmd
@@ -284,6 +291,83 @@ func newSendTextCmd(deps Deps, f *flags) *cobra.Command {
 	cmd.Flags().StringVar(&toType, "to-type", "", "Receive ID type")
 	cmd.Flags().StringVar(&toID, "to", "", "Receive ID")
 	cmd.Flags().StringVar(&text, "text", "", "Text content")
+
+	return cmd
+}
+
+func newSendPostCmd(deps Deps, f *flags) *cobra.Command {
+	var toType, toID, path string
+
+	cmd := &cobra.Command{
+		Use:   "post",
+		Short: "Send a post message",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if toType == "" {
+				return &cliError{code: 2, err: errors.New("--to-type is required")}
+			}
+			if !isAllowedReceiveIDType(toType) {
+				return &cliError{code: 2, err: fmt.Errorf("invalid --to-type %q; allowed values: open_id, user_id, union_id, chat_id", toType)}
+			}
+			if toID == "" {
+				return &cliError{code: 2, err: errors.New("--to is required")}
+			}
+			if strings.TrimSpace(toID) == "" {
+				return &cliError{code: 2, err: errors.New("--to must not be blank")}
+			}
+			if path == "" {
+				return &cliError{code: 2, err: errors.New("--file is required")}
+			}
+			if strings.TrimSpace(path) == "" {
+				return &cliError{code: 2, err: errors.New("--file must not be blank")}
+			}
+
+			content, err := os.ReadFile(path)
+			if err != nil {
+				return &cliError{code: 4, err: &feishu.LocalFileError{Op: "read_file", Path: path, Err: err}}
+			}
+
+			var payload any
+			if err := json.Unmarshal(content, &payload); err != nil {
+				return &cliError{code: 2, err: fmt.Errorf("parse JSON file %q: %w", path, err)}
+			}
+			if _, ok := payload.(map[string]any); !ok {
+				return &cliError{code: 2, err: errors.New("post JSON must be an object")}
+			}
+
+			cfg, err := deps.LoadConfig(config.LoadOptions{
+				AppID:      f.appID,
+				AppSecret:  f.appSecret,
+				ConfigPath: f.configPath,
+			})
+			if err != nil {
+				return &cliError{code: 3, err: err}
+			}
+
+			sender, err := deps.NewPostSender(cfg)
+			if err != nil {
+				return &cliError{code: 3, err: err}
+			}
+
+			result, err := sender.SendPost(cmd.Context(), feishu.PostMessageInput{
+				ReceiveIDType: toType,
+				ReceiveID:     toID,
+				Post:          json.RawMessage(content),
+			})
+			if err != nil {
+				return classifyRunError(err)
+			}
+
+			if err := writeResult(cmd.OutOrStdout(), result); err != nil {
+				return fmt.Errorf("write result: %w", err)
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&toType, "to-type", "", "Receive ID type")
+	cmd.Flags().StringVar(&toID, "to", "", "Receive ID")
+	cmd.Flags().StringVar(&path, "file", "", "Local post JSON file")
 
 	return cmd
 }
@@ -368,6 +452,10 @@ func isAllowedListFormat(value string) bool {
 	default:
 		return false
 	}
+}
+
+func newPostSender(cfg config.Config) (feishu.PostSender, error) {
+	return feishu.NewClient(cfg)
 }
 
 func newMessenger(cfg config.Config) (feishu.Messenger, error) {

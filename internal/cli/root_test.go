@@ -5,10 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/mattn/go-runewidth"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/mattn/go-runewidth"
 
 	"github.com/spf13/cobra"
 
@@ -415,6 +418,169 @@ func TestListChatsCommandLoadsConfigAndCallsListMethod(t *testing.T) {
 	}
 	if !listCalled {
 		t.Fatal("ListChats was not called")
+	}
+}
+
+func TestSendPostCommandIsDiscoverableInHelp(t *testing.T) {
+	cmd := NewRootCmd()
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+	cmd.SetArgs([]string{"send", "--help"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	help := stdout.String()
+	if !strings.Contains(help, "post        Send a post message") {
+		t.Fatalf("help output missing %q:\n%s", "post        Send a post message", help)
+	}
+}
+
+func TestSendPostCommandRejectsMissingFile(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{})
+	cmd.SetArgs([]string{"send", "post", "--to-type", "chat_id", "--to", "oc_xxx"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want parameter error")
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
+	}
+	if err.Error() != "--file is required" {
+		t.Fatalf("error = %q, want %q", err, "--file is required")
+	}
+}
+
+func TestSendPostCommandRejectsMalformedJSON(t *testing.T) {
+	path := writeTempCLIFile(t, "post.json", "not-json")
+	cmd := NewRootCmdWithDeps(Deps{})
+	cmd.SetArgs([]string{"send", "post", "--to-type", "chat_id", "--to", "oc_xxx", "--file", path})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want parameter error")
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
+	}
+	if !strings.Contains(err.Error(), "parse JSON file") {
+		t.Fatalf("error = %q, want parse-json error", err)
+	}
+}
+
+func TestSendPostCommandRejectsNonObjectJSON(t *testing.T) {
+	path := writeTempCLIFile(t, "post.json", `[]`)
+	cmd := NewRootCmdWithDeps(Deps{})
+	cmd.SetArgs([]string{"send", "post", "--to-type", "chat_id", "--to", "oc_xxx", "--file", path})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want parameter error")
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
+	}
+	if err.Error() != "post JSON must be an object" {
+		t.Fatalf("error = %q, want %q", err, "post JSON must be an object")
+	}
+}
+
+func TestSendPostCommandReturnsLocalFileErrorForMissingFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing.json")
+	cmd := NewRootCmdWithDeps(Deps{})
+	cmd.SetArgs([]string{"send", "post", "--to-type", "chat_id", "--to", "oc_xxx", "--file", path})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want local file error")
+	}
+	if got := ExitCode(err); got != 4 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 4)
+	}
+	if !strings.Contains(err.Error(), "read_file") {
+		t.Fatalf("error = %q, want read_file error", err)
+	}
+}
+
+func TestSendPostCommandReturnsLocalFileErrorWhenUnreadable(t *testing.T) {
+	path := writeUnreadableCLIFile(t, "post.json", `{}`)
+	cmd := NewRootCmdWithDeps(Deps{})
+	cmd.SetArgs([]string{"send", "post", "--to-type", "chat_id", "--to", "oc_xxx", "--file", path})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want local file error")
+	}
+	if got := ExitCode(err); got != 4 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 4)
+	}
+	if !strings.Contains(err.Error(), "read_file") {
+		t.Fatalf("error = %q, want read_file error", err)
+	}
+}
+
+func TestSendPostCommandLoadsConfigReadsFileAndCallsSendPost(t *testing.T) {
+	path := writeTempCLIFile(t, "post.json", `{"zh_cn":{"title":"Alarm","content":[[{"tag":"text","text":"hello"}]]}}`)
+	wantCfg := config.Config{AppID: "flag-id", AppSecret: "flag-secret"}
+	loadCalled := false
+	newSenderCalled := false
+	sendCalled := false
+
+	cmd := NewRootCmdWithDeps(Deps{
+		LoadConfig: func(opts config.LoadOptions) (config.Config, error) {
+			loadCalled = true
+			if opts.AppID != "flag-id" || opts.AppSecret != "flag-secret" {
+				t.Fatalf("LoadConfig() got %#v", opts)
+			}
+			return wantCfg, nil
+		},
+		NewPostSender: func(cfg config.Config) (feishu.PostSender, error) {
+			newSenderCalled = true
+			if cfg != wantCfg {
+				t.Fatalf("NewPostSender() cfg = %#v, want %#v", cfg, wantCfg)
+			}
+			return fakePostSender{
+				sendPost: func(_ context.Context, input feishu.PostMessageInput) (feishu.MessageResult, error) {
+					sendCalled = true
+					if input.ReceiveIDType != "chat_id" || input.ReceiveID != "oc_xxx" {
+						t.Fatalf("SendPost input = %#v", input)
+					}
+					if string(input.Post) != `{"zh_cn":{"title":"Alarm","content":[[{"tag":"text","text":"hello"}]]}}` {
+						t.Fatalf("SendPost content = %q", string(input.Post))
+					}
+					return feishu.MessageResult{MessageID: "om_post", MsgType: "post", ReceiveID: "oc_xxx", ReceiveIDType: "chat_id"}, nil
+				},
+			}, nil
+		},
+		NewMessenger: func(config.Config) (feishu.Messenger, error) {
+			t.Fatal("NewMessenger should not be called by send post")
+			return nil, nil
+		},
+	})
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+	cmd.SetArgs([]string{"--app-id", "flag-id", "--app-secret", "flag-secret", "send", "post", "--to-type", "chat_id", "--to", "oc_xxx", "--file", path})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if !loadCalled {
+		t.Fatal("LoadConfig was not called")
+	}
+	if !newSenderCalled {
+		t.Fatal("NewPostSender was not called")
+	}
+	if !sendCalled {
+		t.Fatal("SendPost was not called")
+	}
+	want := "message_id=om_post\nmsg_type=post\nreceive_id=oc_xxx\nreceive_id_type=chat_id\n"
+	if stdout.String() != want {
+		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 	}
 }
 
@@ -937,6 +1103,34 @@ type fakeChatLister struct {
 
 func (f fakeChatLister) ListChats(ctx context.Context) ([]feishu.ChatSummary, error) {
 	return f.listChats(ctx)
+}
+
+type fakePostSender struct {
+	sendPost func(context.Context, feishu.PostMessageInput) (feishu.MessageResult, error)
+}
+
+func (f fakePostSender) SendPost(ctx context.Context, input feishu.PostMessageInput) (feishu.MessageResult, error) {
+	return f.sendPost(ctx, input)
+}
+
+func writeTempCLIFile(t *testing.T, name, content string) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("WriteFile(%q) error = %v", path, err)
+	}
+	return path
+}
+
+func writeUnreadableCLIFile(t *testing.T, name, content string) string {
+	t.Helper()
+	path := writeTempCLIFile(t, name, content)
+	if err := os.Chmod(path, 0o000); err != nil {
+		t.Fatalf("Chmod(%q) error = %v", path, err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o600) })
+	return path
 }
 
 type failingWriter struct{}
