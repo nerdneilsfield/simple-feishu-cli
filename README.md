@@ -229,6 +229,126 @@ CI/CD with explicit flags:
 If the binary is installed into `PATH`, drop the `./` prefix.
 
 <details>
+<summary>Install from GitHub Releases in CI/CD</summary>
+
+These examples pin the release to `0.0.2`, which is the version you said you are about to publish. The Linux GitHub-hosted and GitLab Linux runners use this asset:
+
+```text
+https://github.com/nerdneilsfield/simple-feishu-cli/releases/download/v0.0.2/feishu_0.0.2_linux_amd64.tar.gz
+```
+
+GitHub Actions example:
+
+```yaml
+name: Notify with feishu
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    env:
+      FEISHU_VERSION: 0.0.2
+      FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+      FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+      FEISHU_OPEN_ID: ${{ secrets.FEISHU_OPEN_ID }}
+      FEISHU_CHAT_ID: ${{ secrets.FEISHU_CHAT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install feishu CLI
+        run: |
+          curl -fsSL -o /tmp/feishu.tar.gz \
+            "https://github.com/nerdneilsfield/simple-feishu-cli/releases/download/v${FEISHU_VERSION}/feishu_${FEISHU_VERSION}_linux_amd64.tar.gz"
+          tar -xzf /tmp/feishu.tar.gz -C /tmp
+          install /tmp/feishu /usr/local/bin/feishu
+          feishu --version || true
+
+      - name: List joined chats
+        run: feishu list chats --format json
+
+      - name: Send text
+        run: |
+          feishu send text \
+            --to-type open_id \
+            --to "$FEISHU_OPEN_ID" \
+            --text "build ${GITHUB_SHA} finished"
+
+      - name: Send file
+        run: |
+          printf 'build ok\n' > report.txt
+          feishu send file \
+            --to-type chat_id \
+            --to "$FEISHU_CHAT_ID" \
+            --path ./report.txt
+
+      - name: Send native post JSON
+        run: |
+          feishu send post \
+            --to-type chat_id \
+            --to "$FEISHU_CHAT_ID" \
+            --file ./examples/post-basic.json
+
+      - name: Send Markdown as post
+        run: |
+          feishu send md \
+            --to-type chat_id \
+            --to "$FEISHU_CHAT_ID" \
+            --file ./examples/post-from-markdown.md
+```
+
+GitLab Runner example:
+
+```yaml
+stages:
+  - notify
+
+variables:
+  FEISHU_VERSION: "0.0.2"
+
+default:
+  image: alpine:3.20
+  before_script:
+    - apk add --no-cache curl tar
+    - curl -fsSL -o /tmp/feishu.tar.gz "https://github.com/nerdneilsfield/simple-feishu-cli/releases/download/v${FEISHU_VERSION}/feishu_${FEISHU_VERSION}_linux_amd64.tar.gz"
+    - tar -xzf /tmp/feishu.tar.gz -C /tmp
+    - install -m 0755 /tmp/feishu /usr/local/bin/feishu
+
+notify:text:
+  stage: notify
+  script:
+    - feishu send text --to-type open_id --to "$FEISHU_OPEN_ID" --text "pipeline ${CI_PIPELINE_ID} finished"
+
+notify:file:
+  stage: notify
+  script:
+    - printf 'artifact ok\n' > report.txt
+    - feishu send file --to-type chat_id --to "$FEISHU_CHAT_ID" --path ./report.txt
+
+notify:post:
+  stage: notify
+  script:
+    - feishu send post --to-type chat_id --to "$FEISHU_CHAT_ID" --file ./examples/post-basic.json
+
+notify:md:
+  stage: notify
+  script:
+    - feishu send md --to-type chat_id --to "$FEISHU_CHAT_ID" --file ./examples/post-from-markdown.md
+
+notify:list-chats:
+  stage: notify
+  script:
+    - feishu list chats --format json
+```
+
+For self-hosted ARM64 runners, switch the asset name from `linux_amd64` to `linux_arm64`.
+
+</details>
+
+<details>
 <summary>Rich text commands</summary>
 
 `send text` stays plain text. It does not parse Markdown and does not emit Feishu `post`.

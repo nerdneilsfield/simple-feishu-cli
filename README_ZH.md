@@ -229,6 +229,126 @@ CI/CD 场景下用显式参数：
 如果你把二进制安装进了 `PATH`，把 `./feishu` 换成 `feishu` 即可。
 
 <details>
+<summary>在 CI/CD 中从 GitHub Releases 安装</summary>
+
+下面的示例固定使用你即将发布的 `0.0.2` 版本。Linux 的 GitHub Hosted Runner 和 GitLab Linux Runner 都可以直接下载这个包：
+
+```text
+https://github.com/nerdneilsfield/simple-feishu-cli/releases/download/v0.0.2/feishu_0.0.2_linux_amd64.tar.gz
+```
+
+GitHub Actions 示例：
+
+```yaml
+name: Notify with feishu
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    env:
+      FEISHU_VERSION: 0.0.2
+      FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+      FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+      FEISHU_OPEN_ID: ${{ secrets.FEISHU_OPEN_ID }}
+      FEISHU_CHAT_ID: ${{ secrets.FEISHU_CHAT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 feishu CLI
+        run: |
+          curl -fsSL -o /tmp/feishu.tar.gz \
+            "https://github.com/nerdneilsfield/simple-feishu-cli/releases/download/v${FEISHU_VERSION}/feishu_${FEISHU_VERSION}_linux_amd64.tar.gz"
+          tar -xzf /tmp/feishu.tar.gz -C /tmp
+          install /tmp/feishu /usr/local/bin/feishu
+          feishu --version || true
+
+      - name: 列出机器人所在群
+        run: feishu list chats --format json
+
+      - name: 发送文本消息
+        run: |
+          feishu send text \
+            --to-type open_id \
+            --to "$FEISHU_OPEN_ID" \
+            --text "build ${GITHUB_SHA} finished"
+
+      - name: 上传并发送文件
+        run: |
+          printf 'build ok\n' > report.txt
+          feishu send file \
+            --to-type chat_id \
+            --to "$FEISHU_CHAT_ID" \
+            --path ./report.txt
+
+      - name: 发送原生 post JSON
+        run: |
+          feishu send post \
+            --to-type chat_id \
+            --to "$FEISHU_CHAT_ID" \
+            --file ./examples/post-basic.json
+
+      - name: 发送 Markdown 富文本
+        run: |
+          feishu send md \
+            --to-type chat_id \
+            --to "$FEISHU_CHAT_ID" \
+            --file ./examples/post-from-markdown.md
+```
+
+GitLab Runner 示例：
+
+```yaml
+stages:
+  - notify
+
+variables:
+  FEISHU_VERSION: "0.0.2"
+
+default:
+  image: alpine:3.20
+  before_script:
+    - apk add --no-cache curl tar
+    - curl -fsSL -o /tmp/feishu.tar.gz "https://github.com/nerdneilsfield/simple-feishu-cli/releases/download/v${FEISHU_VERSION}/feishu_${FEISHU_VERSION}_linux_amd64.tar.gz"
+    - tar -xzf /tmp/feishu.tar.gz -C /tmp
+    - install -m 0755 /tmp/feishu /usr/local/bin/feishu
+
+notify:text:
+  stage: notify
+  script:
+    - feishu send text --to-type open_id --to "$FEISHU_OPEN_ID" --text "pipeline ${CI_PIPELINE_ID} finished"
+
+notify:file:
+  stage: notify
+  script:
+    - printf 'artifact ok\n' > report.txt
+    - feishu send file --to-type chat_id --to "$FEISHU_CHAT_ID" --path ./report.txt
+
+notify:post:
+  stage: notify
+  script:
+    - feishu send post --to-type chat_id --to "$FEISHU_CHAT_ID" --file ./examples/post-basic.json
+
+notify:md:
+  stage: notify
+  script:
+    - feishu send md --to-type chat_id --to "$FEISHU_CHAT_ID" --file ./examples/post-from-markdown.md
+
+notify:list-chats:
+  stage: notify
+  script:
+    - feishu list chats --format json
+```
+
+如果你用的是自托管 ARM64 Runner，把资产名里的 `linux_amd64` 换成 `linux_arm64`。
+
+</details>
+
+<details>
 <summary>富文本命令说明</summary>
 
 `send text` 仍然只发纯文本，不会解析 Markdown，也不会生成 Feishu `post`。
