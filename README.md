@@ -10,11 +10,11 @@
 
 Current scope:
 
-- `./feishu send text`
-- `./feishu send file`
-- `./feishu send post`
-- `./feishu send md`
-- `./feishu list chats`
+- `./dist/feishu send text`
+- `./dist/feishu send file`
+- `./dist/feishu send post`
+- `./dist/feishu send md`
+- `./dist/feishu list chats`
 - credential precedence: CLI flags > environment variables > config file
 - stable success fields for message sends: `message_id`, `msg_type`, `receive_id`, `receive_id_type`
 - fixed exit codes: `0`, `2`, `3`, `4`, `10`
@@ -33,8 +33,8 @@ Requires Go `1.24.0` or a compatible `1.24.x` release.
 Build from source:
 
 ```bash
-go build -o feishu ./cmd/feishu
-./feishu --help
+go build -o ./dist/feishu ./cmd/feishu
+./dist/feishu --help
 ```
 
 Set credentials with env vars:
@@ -47,7 +47,7 @@ export FEISHU_APP_SECRET='secret_xxx'
 Send a text message:
 
 ```bash
-./feishu send text \
+./dist/feishu send text \
   --to-type open_id \
   --to ou_xxx \
   --text "hello from cli"
@@ -56,7 +56,7 @@ Send a text message:
 Upload and send a file:
 
 ```bash
-./feishu send file \
+./dist/feishu send file \
   --to-type chat_id \
   --to oc_xxx \
   --path ./report.pdf
@@ -65,7 +65,7 @@ Upload and send a file:
 Send a Feishu `post` payload from local JSON:
 
 ```bash
-./feishu send post \
+./dist/feishu send post \
   --to-type chat_id \
   --to oc_xxx \
   --file ./examples/post-basic.json
@@ -74,7 +74,7 @@ Send a Feishu `post` payload from local JSON:
 Convert Markdown and send it as Feishu `post`:
 
 ```bash
-./feishu send md \
+./dist/feishu send md \
   --to-type chat_id \
   --to oc_xxx \
   --file ./examples/post-from-markdown.md
@@ -111,7 +111,7 @@ See `config.example.yaml` for the example schema.
 Use a custom config path when needed:
 
 ```bash
-./feishu \
+./dist/feishu \
   --config ./feishu-prod.yaml \
   send text \
   --to-type open_id \
@@ -280,19 +280,19 @@ The public config loader keeps the same precedence as the CLI: explicit options,
 List joined chats:
 
 ```bash
-./feishu list chats
+./dist/feishu list chats
 ```
 
 List joined chats as JSON:
 
 ```bash
-./feishu list chats --format json
+./dist/feishu list chats --format json
 ```
 
 CI/CD with explicit flags:
 
 ```bash
-./feishu \
+./dist/feishu \
   --app-id "${FEISHU_APP_ID}" \
   --app-secret "${FEISHU_APP_SECRET}" \
   send file \
@@ -301,7 +301,7 @@ CI/CD with explicit flags:
   --path ./artifacts/report.pdf
 ```
 
-If the binary is installed into `PATH`, drop the `./` prefix.
+If the binary is installed into `PATH`, replace `./dist/feishu` with `feishu`.
 
 <details>
 <summary>Install from GitHub Releases in CI/CD</summary>
@@ -431,7 +431,7 @@ For self-hosted ARM64 runners, switch the asset name from `linux_amd64` to `linu
 Use `send post` when you already have Feishu `post` JSON:
 
 ```bash
-./feishu send post \
+./dist/feishu send post \
   --to-type chat_id \
   --to oc_xxx \
   --file ./examples/post-basic.json
@@ -442,7 +442,7 @@ The JSON file must be a top-level object. The CLI sends it as `msg_type=post`. S
 Use `send md` when you want the CLI to convert Markdown into Feishu `post`:
 
 ```bash
-./feishu send md \
+./dist/feishu send md \
   --to-type chat_id \
   --to oc_xxx \
   --file ./examples/post-from-markdown.md

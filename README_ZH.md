@@ -10,11 +10,11 @@
 
 当前范围：
 
-- `./feishu send text`
-- `./feishu send file`
-- `./feishu send post`
-- `./feishu send md`
-- `./feishu list chats`
+- `./dist/feishu send text`
+- `./dist/feishu send file`
+- `./dist/feishu send post`
+- `./dist/feishu send md`
+- `./dist/feishu list chats`
 - 凭证优先级：命令行参数 > 环境变量 > 配置文件
 - 发送消息命令的成功输出字段固定：`message_id`、`msg_type`、`receive_id`、`receive_id_type`
 - 退出码固定：`0`、`2`、`3`、`4`、`10`
@@ -33,8 +33,8 @@
 从源码构建：
 
 ```bash
-go build -o feishu ./cmd/feishu
-./feishu --help
+go build -o ./dist/feishu ./cmd/feishu
+./dist/feishu --help
 ```
 
 先设置凭证环境变量：
@@ -47,7 +47,7 @@ export FEISHU_APP_SECRET='secret_xxx'
 发送文本消息：
 
 ```bash
-./feishu send text \
+./dist/feishu send text \
   --to-type open_id \
   --to ou_xxx \
   --text "hello from cli"
@@ -56,7 +56,7 @@ export FEISHU_APP_SECRET='secret_xxx'
 上传并发送文件：
 
 ```bash
-./feishu send file \
+./dist/feishu send file \
   --to-type chat_id \
   --to oc_xxx \
   --path ./report.pdf
@@ -65,7 +65,7 @@ export FEISHU_APP_SECRET='secret_xxx'
 直接发送本地 Feishu `post` JSON：
 
 ```bash
-./feishu send post \
+./dist/feishu send post \
   --to-type chat_id \
   --to oc_xxx \
   --file ./examples/post-basic.json
@@ -74,7 +74,7 @@ export FEISHU_APP_SECRET='secret_xxx'
 把 Markdown 转成 Feishu `post` 后发送：
 
 ```bash
-./feishu send md \
+./dist/feishu send md \
   --to-type chat_id \
   --to oc_xxx \
   --file ./examples/post-from-markdown.md
@@ -111,7 +111,7 @@ chmod 600 ~/.config/feishu/config.yaml
 如果你要指定自定义配置文件：
 
 ```bash
-./feishu \
+./dist/feishu \
   --config ./feishu-prod.yaml \
   send text \
   --to-type open_id \
@@ -280,19 +280,19 @@ for _, chat := range chats {
 列出机器人已加入的群：
 
 ```bash
-./feishu list chats
+./dist/feishu list chats
 ```
 
 以 JSON 输出群列表：
 
 ```bash
-./feishu list chats --format json
+./dist/feishu list chats --format json
 ```
 
 CI/CD 场景下用显式参数：
 
 ```bash
-./feishu \
+./dist/feishu \
   --app-id "${FEISHU_APP_ID}" \
   --app-secret "${FEISHU_APP_SECRET}" \
   send file \
@@ -301,7 +301,7 @@ CI/CD 场景下用显式参数：
   --path ./artifacts/report.pdf
 ```
 
-如果你把二进制安装进了 `PATH`，把 `./feishu` 换成 `feishu` 即可。
+如果你把二进制安装进了 `PATH`，把 `./dist/feishu` 换成 `feishu` 即可。
 
 <details>
 <summary>在 CI/CD 中从 GitHub Releases 安装</summary>
@@ -431,7 +431,7 @@ notify:list-chats:
 如果你已经有 Feishu `post` JSON，就用 `send post`：
 
 ```bash
-./feishu send post \
+./dist/feishu send post \
   --to-type chat_id \
   --to oc_xxx \
   --file ./examples/post-basic.json
@@ -442,7 +442,7 @@ notify:list-chats:
 如果你想让 CLI 负责把 Markdown 转成 Feishu `post`，就用 `send md`：
 
 ```bash
-./feishu send md \
+./dist/feishu send md \
   --to-type chat_id \
   --to oc_xxx \
   --file ./examples/post-from-markdown.md

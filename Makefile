@@ -1,12 +1,14 @@
 .PHONY: build run test vet check clean
 
-BINARY := feishu
+BINARY_DIR := dist
+BINARY := $(BINARY_DIR)/feishu
 
 check:
 	$(MAKE) test
 	$(MAKE) vet
 
 build:
+	mkdir -p $(BINARY_DIR)
 	go build -o $(BINARY) ./cmd/feishu
 
 run:
@@ -19,4 +21,5 @@ vet:
 	go vet ./...
 
 clean:
-	rm -f $(BINARY) feishu.exe
+	rm -rf $(BINARY_DIR)
+	rm -f feishu.exe
