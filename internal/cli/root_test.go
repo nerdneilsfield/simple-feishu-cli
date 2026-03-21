@@ -37,12 +37,40 @@ func TestNewRootCmdUsesFeishuNameAndPrintsHelp(t *testing.T) {
 		"Usage:\n  feishu [command]",
 		"list        List Feishu resources",
 		"send        Send messages or files",
-		"--app-id string",
-		"--app-secret string",
+		"-c, --config string",
+		"-i, --app-id string",
+		"-s, --app-secret string",
 	} {
 		if !strings.Contains(help, want) {
 			t.Fatalf("help output missing %q:\n%s", want, help)
 		}
+	}
+}
+
+func TestShortGlobalFlagsReachConfigLoader(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{
+		LoadConfig: func(opts config.LoadOptions) (config.Config, error) {
+			if opts.AppID != "flag-id" || opts.AppSecret != "flag-secret" || opts.ConfigPath != "./feishu.yaml" {
+				t.Fatalf("LoadConfig() got %#v", opts)
+			}
+			return config.Config{AppID: "flag-id", AppSecret: "flag-secret"}, nil
+		},
+		NewChatLister: func(config.Config) (feishu.ChatLister, error) {
+			return fakeChatLister{
+				listChats: func(context.Context) ([]feishu.ChatSummary, error) {
+					return []feishu.ChatSummary{}, nil
+				},
+			}, nil
+		},
+	})
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+	cmd.SetArgs([]string{"-i", "flag-id", "-s", "flag-secret", "-c", "./feishu.yaml", "list", "chats"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
 	}
 }
 

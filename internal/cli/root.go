@@ -71,9 +71,9 @@ func NewRootCmdWithDeps(deps Deps) *cobra.Command {
 		SilenceUsage:  true,
 	}
 
-	cmd.PersistentFlags().StringVar(&f.appID, "app-id", "", "Feishu app ID")
-	cmd.PersistentFlags().StringVar(&f.appSecret, "app-secret", "", "Feishu app secret")
-	cmd.PersistentFlags().StringVar(&f.configPath, "config", "", "Path to config file")
+	cmd.PersistentFlags().StringVarP(&f.appID, "app-id", "i", "", "Feishu app ID")
+	cmd.PersistentFlags().StringVarP(&f.appSecret, "app-secret", "s", "", "Feishu app secret")
+	cmd.PersistentFlags().StringVarP(&f.configPath, "config", "c", "", "Path to config file")
 	cmd.SetHelpCommand(newHelpCmd(cmd))
 	cmd.AddCommand(
 		newSendCmd(deps, f),
