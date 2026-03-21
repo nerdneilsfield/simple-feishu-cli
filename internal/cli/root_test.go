@@ -662,6 +662,131 @@ func TestSendPostCommandLoadsConfigReadsFileAndCallsSendPost(t *testing.T) {
 	}
 }
 
+func TestSendMDCommandIsDiscoverableInHelp(t *testing.T) {
+	cmd := NewRootCmd()
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+	cmd.SetArgs([]string{"send", "--help"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	help := stdout.String()
+	for _, want := range []string{
+		"md          Convert Markdown to post and send it",
+	} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("help output missing %q:\n%s", want, help)
+		}
+	}
+}
+
+func TestSendMDCommandRejectsMissingFile(t *testing.T) {
+	cmd := NewRootCmdWithDeps(Deps{})
+	cmd.SetArgs([]string{"send", "md", "--to-type", "chat_id", "--to", "oc_xxx"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want parameter error")
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
+	}
+	if err.Error() != "--file is required" {
+		t.Fatalf("error = %q, want %q", err, "--file is required")
+	}
+}
+
+func TestSendMDCommandLoadsConfigConvertsMarkdownAndCallsSendPost(t *testing.T) {
+	path := writeTempCLIFile(t, "notice.md", "# Notice\n\nHello world.\n")
+	wantCfg := config.Config{AppID: "flag-id", AppSecret: "flag-secret"}
+	loadCalled := false
+	newSenderCalled := false
+	sendCalled := false
+
+	cmd := NewRootCmdWithDeps(Deps{
+		LoadConfig: func(opts config.LoadOptions) (config.Config, error) {
+			loadCalled = true
+			if opts.AppID != "flag-id" || opts.AppSecret != "flag-secret" {
+				t.Fatalf("LoadConfig() got %#v", opts)
+			}
+			return wantCfg, nil
+		},
+		NewPostSender: func(cfg config.Config) (feishu.PostSender, error) {
+			newSenderCalled = true
+			if cfg != wantCfg {
+				t.Fatalf("NewPostSender() cfg = %#v, want %#v", cfg, wantCfg)
+			}
+			return fakePostSender{
+				sendPost: func(_ context.Context, input feishu.PostMessageInput) (feishu.MessageResult, error) {
+					sendCalled = true
+					if input.ReceiveIDType != "chat_id" || input.ReceiveID != "oc_xxx" {
+						t.Fatalf("SendPost input = %#v", input)
+					}
+					if string(input.Post) != `{"zh_cn":{"title":"Notice","content":[[{"tag":"text","text":"Hello world."}]]}}` {
+						t.Fatalf("SendPost content = %q", string(input.Post))
+					}
+					return feishu.MessageResult{MessageID: "om_md", MsgType: "post", ReceiveID: "oc_xxx", ReceiveIDType: "chat_id"}, nil
+				},
+			}, nil
+		},
+		NewMessenger: func(config.Config) (feishu.Messenger, error) {
+			t.Fatal("NewMessenger should not be called by send md")
+			return nil, nil
+		},
+	})
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+	cmd.SetArgs([]string{"--app-id", "flag-id", "--app-secret", "flag-secret", "send", "md", "--to-type", "chat_id", "--to", "oc_xxx", "--file", path})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if !loadCalled {
+		t.Fatal("LoadConfig was not called")
+	}
+	if !newSenderCalled {
+		t.Fatal("NewPostSender was not called")
+	}
+	if !sendCalled {
+		t.Fatal("SendPost was not called")
+	}
+	want := "message_id=om_md\nmsg_type=post\nreceive_id=oc_xxx\nreceive_id_type=chat_id\n"
+	if stdout.String() != want {
+		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+	}
+}
+
+func TestSendMDCommandRejectsUnsupportedMarkdown(t *testing.T) {
+	path := writeTempCLIFile(t, "unsupported.md", "![image](https://example.com/x.png)\n")
+	cmd := NewRootCmdWithDeps(Deps{
+		LoadConfig: func(config.LoadOptions) (config.Config, error) {
+			t.Fatal("LoadConfig should not be called for unsupported markdown")
+			return config.Config{}, nil
+		},
+		NewPostSender: func(config.Config) (feishu.PostSender, error) {
+			t.Fatal("NewPostSender should not be called for unsupported markdown")
+			return nil, nil
+		},
+	})
+	cmd.SetArgs([]string{"send", "md", "--to-type", "chat_id", "--to", "oc_xxx", "--file", path})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want parameter error")
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("ExitCode(err) = %d, want %d", got, 2)
+	}
+	if !strings.Contains(err.Error(), "unsupported") {
+		t.Fatalf("error = %q, want unsupported markdown error", err)
+	}
+}
+
 func TestSendTextCommandOutputsStableFields(t *testing.T) {
 	cmd := NewRootCmdWithDeps(Deps{
 		LoadConfig: func(opts config.LoadOptions) (config.Config, error) {

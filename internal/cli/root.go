@@ -11,6 +11,7 @@ import (
 	"github.com/mattn/go-runewidth"
 	"github.com/nerdneilsfield/simple-feishu-cli/internal/config"
 	"github.com/nerdneilsfield/simple-feishu-cli/internal/feishu"
+	"github.com/nerdneilsfield/simple-feishu-cli/internal/markdown"
 	"github.com/spf13/cobra"
 )
 
@@ -226,6 +227,7 @@ func newSendCmd(deps Deps, f *flags) *cobra.Command {
 		newSendTextCmd(deps, f),
 		newSendFileCmd(deps, f),
 		newSendPostCmd(deps, f),
+		newSendMDCmd(deps, f),
 	)
 
 	return cmd
@@ -368,6 +370,80 @@ func newSendPostCmd(deps Deps, f *flags) *cobra.Command {
 	cmd.Flags().StringVar(&toType, "to-type", "", "Receive ID type")
 	cmd.Flags().StringVar(&toID, "to", "", "Receive ID")
 	cmd.Flags().StringVar(&path, "file", "", "Local post JSON file")
+
+	return cmd
+}
+
+func newSendMDCmd(deps Deps, f *flags) *cobra.Command {
+	var toType, toID, path string
+
+	cmd := &cobra.Command{
+		Use:   "md",
+		Short: "Convert Markdown to post and send it",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if toType == "" {
+				return &cliError{code: 2, err: errors.New("--to-type is required")}
+			}
+			if !isAllowedReceiveIDType(toType) {
+				return &cliError{code: 2, err: fmt.Errorf("invalid --to-type %q; allowed values: open_id, user_id, union_id, chat_id", toType)}
+			}
+			if toID == "" {
+				return &cliError{code: 2, err: errors.New("--to is required")}
+			}
+			if strings.TrimSpace(toID) == "" {
+				return &cliError{code: 2, err: errors.New("--to must not be blank")}
+			}
+			if path == "" {
+				return &cliError{code: 2, err: errors.New("--file is required")}
+			}
+			if strings.TrimSpace(path) == "" {
+				return &cliError{code: 2, err: errors.New("--file must not be blank")}
+			}
+
+			content, err := os.ReadFile(path)
+			if err != nil {
+				return &cliError{code: 4, err: &feishu.LocalFileError{Op: "read_file", Path: path, Err: err}}
+			}
+
+			post, err := markdown.ConvertToFeishuPost(content)
+			if err != nil {
+				return &cliError{code: 2, err: fmt.Errorf("convert Markdown file %q: %w", path, err)}
+			}
+
+			cfg, err := deps.LoadConfig(config.LoadOptions{
+				AppID:      f.appID,
+				AppSecret:  f.appSecret,
+				ConfigPath: f.configPath,
+			})
+			if err != nil {
+				return &cliError{code: 3, err: err}
+			}
+
+			sender, err := deps.NewPostSender(cfg)
+			if err != nil {
+				return &cliError{code: 3, err: err}
+			}
+
+			result, err := sender.SendPost(cmd.Context(), feishu.PostMessageInput{
+				ReceiveIDType: toType,
+				ReceiveID:     toID,
+				Post:          post,
+			})
+			if err != nil {
+				return classifyRunError(err)
+			}
+
+			if err := writeResult(cmd.OutOrStdout(), result); err != nil {
+				return fmt.Errorf("write result: %w", err)
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&toType, "to-type", "", "Receive ID type")
+	cmd.Flags().StringVar(&toID, "to", "", "Receive ID")
+	cmd.Flags().StringVar(&path, "file", "", "Local Markdown file")
 
 	return cmd
 }
