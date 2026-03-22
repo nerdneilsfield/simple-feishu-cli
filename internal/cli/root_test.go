@@ -700,6 +700,31 @@ func TestSendMDCommandRejectsMissingFile(t *testing.T) {
 	}
 }
 
+func TestSendMDCommandPreservesLineBreaks(t *testing.T) {
+	path := writeTempCLIFile(t, "notice.md", "first line\nsecond line\n")
+
+	cmd := NewRootCmdWithDeps(Deps{
+		LoadConfig: func(config.LoadOptions) (config.Config, error) {
+			return config.Config{AppID: "flag-id", AppSecret: "flag-secret"}, nil
+		},
+		NewPostSender: func(config.Config) (feishu.PostSender, error) {
+			return fakePostSender{
+				sendPost: func(_ context.Context, input feishu.PostMessageInput) (feishu.MessageResult, error) {
+					if string(input.Post) != `{"zh_cn":{"title":"","content":[[{"tag":"text","text":"first line\nsecond line"}]]}}` {
+						t.Fatalf("SendPost content = %q", string(input.Post))
+					}
+					return feishu.MessageResult{MessageID: "om_md", MsgType: "post", ReceiveID: "oc_xxx", ReceiveIDType: "chat_id"}, nil
+				},
+			}, nil
+		},
+	})
+	cmd.SetArgs([]string{"--app-id", "flag-id", "--app-secret", "flag-secret", "send", "md", "--to-type", "chat_id", "--to", "oc_xxx", "--file", path})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+}
+
 func TestSendMDCommandLoadsConfigConvertsMarkdownAndCallsSendPost(t *testing.T) {
 	path := writeTempCLIFile(t, "notice.md", "# Notice\n\nHello world.\n")
 	wantCfg := config.Config{AppID: "flag-id", AppSecret: "flag-secret"}

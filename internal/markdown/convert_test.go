@@ -18,6 +18,30 @@ func TestConvertToFeishuPostExtractsTitleFromFirstH1(t *testing.T) {
 	}
 }
 
+func TestConvertToFeishuPostPreservesSoftLineBreaksInParagraphs(t *testing.T) {
+	got, err := ConvertToFeishuPost([]byte("first line\nsecond line\n"))
+	if err != nil {
+		t.Fatalf("ConvertToFeishuPost() error = %v", err)
+	}
+
+	want := `{"zh_cn":{"title":"","content":[[{"tag":"text","text":"first line\nsecond line"}]]}}`
+	if string(got) != want {
+		t.Fatalf("ConvertToFeishuPost() = %s, want %s", string(got), want)
+	}
+}
+
+func TestConvertToFeishuPostPreservesSoftLineBreaksInStyledParagraphs(t *testing.T) {
+	got, err := ConvertToFeishuPost([]byte("**first line\nsecond line**\n"))
+	if err != nil {
+		t.Fatalf("ConvertToFeishuPost() error = %v", err)
+	}
+
+	want := `{"zh_cn":{"title":"","content":[[{"tag":"text","text":"first line\nsecond line","style":["bold"]}]]}}`
+	if string(got) != want {
+		t.Fatalf("ConvertToFeishuPost() = %s, want %s", string(got), want)
+	}
+}
+
 func TestConvertToFeishuPostConvertsParagraphAndInlineStyles(t *testing.T) {
 	got, err := ConvertToFeishuPost([]byte("**bold** *italic* ~~strike~~\n"))
 	if err != nil {

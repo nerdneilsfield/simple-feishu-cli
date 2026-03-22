@@ -154,10 +154,8 @@ func (c *converter) convertInline(node gast.Node, style string) ([]postNode, err
 	switch n := node.(type) {
 	case *gast.Text:
 		text := string(n.Value(c.source))
-		if n.HardLineBreak() {
+		if n.HardLineBreak() || n.SoftLineBreak() {
 			text += "\n"
-		} else if n.SoftLineBreak() {
-			text += " "
 		}
 		if strings.TrimSpace(text) == "" {
 			return nil, nil
