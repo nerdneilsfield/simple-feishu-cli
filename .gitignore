@@ -8,3 +8,4 @@
 # Local config files
 /config.toml
 /config.yaml
+/config_seu.yaml
