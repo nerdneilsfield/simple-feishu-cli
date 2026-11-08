@@ -26,6 +26,19 @@ Out of scope for now:
 - multi-profile or multi-tenant config
 - local token caching
 
+## Homebrew / Scoop
+
+```bash
+# macOS / Linux
+brew install --cask nerdneilsfield/apps/feishu
+```
+
+```powershell
+# Windows
+scoop bucket add nerdneilsfield https://github.com/nerdneilsfield/homebrew-apps
+scoop install nerdneilsfield/feishu
+```
+
 ## Quickstart
 
 Install with `go install`:
