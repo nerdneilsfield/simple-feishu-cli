@@ -26,6 +26,19 @@
 - 多 profile / 多租户配置
 - token 本地缓存
 
+## 通过 Homebrew / Scoop 安装
+
+```bash
+# macOS / Linux
+brew install --cask nerdneilsfield/apps/feishu
+```
+
+```powershell
+# Windows
+scoop bucket add nerdneilsfield https://github.com/nerdneilsfield/homebrew-apps
+scoop install nerdneilsfield/feishu
+```
+
 ## 快速开始
 
 用 `go install` 安装：

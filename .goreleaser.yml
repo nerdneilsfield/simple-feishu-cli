@@ -30,3 +30,33 @@ checksum:
 
 changelog:
   disable: true
+
+# Publish to the nerdneilsfield/homebrew-apps tap and Scoop bucket.
+homebrew_casks:
+  - name: feishu
+    homepage: https://github.com/nerdneilsfield/simple-feishu-cli
+    description: Send files and messages to Feishu users or groups from the command line
+    binaries:
+      - feishu
+    directory: Casks
+    repository:
+      owner: nerdneilsfield
+      name: homebrew-apps
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    hooks:
+      post:
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/feishu"]
+          end
+
+scoops:
+  - name: feishu
+    homepage: https://github.com/nerdneilsfield/simple-feishu-cli
+    description: Send files and messages to Feishu users or groups from the command line
+    license: MIT
+    directory: bucket
+    repository:
+      owner: nerdneilsfield
+      name: homebrew-apps
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
